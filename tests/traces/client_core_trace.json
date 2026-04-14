@@ -1,0 +1,53 @@
+[
+  {
+    "constructor": "auth.sendCode",
+    "payload": {
+      "phone": "+15550001111"
+    }
+  },
+  {
+    "constructor": "auth.signIn",
+    "payload": {
+      "phone": "+15550001111"
+    }
+  },
+  {
+    "constructor": "messages.createChat",
+    "payload": {
+      "title": "core",
+      "member_user_ids": []
+    }
+  },
+  {
+    "constructor": "messages.sendMessage",
+    "payload": {
+      "text": "hello"
+    }
+  },
+  {
+    "constructor": "messages.deleteMessages",
+    "payload": {
+      "message_ids": []
+    }
+  },
+  {
+    "constructor": "updates.getDifference",
+    "payload": {
+      "pts": 0,
+      "qts": 0,
+      "seq": 0
+    }
+  },
+  {
+    "constructor": "account.updateProfile",
+    "payload": {
+      "first_name": "Alice",
+      "last_name": "Test",
+      "bio": "MVP"
+    }
+  },
+  {
+    "constructor": "status.get",
+    "payload": {}
+  }
+]

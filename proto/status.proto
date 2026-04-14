@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package ntgram.status.v1;
+
+import "common.proto";
+
+service StatusService {
+  rpc SetOnline(SetOnlineRequest) returns (SetOnlineResponse);
+  rpc SetOffline(SetOfflineRequest) returns (SetOfflineResponse);
+  rpc GetPresence(GetPresenceRequest) returns (GetPresenceResponse);
+}
+
+message SetOnlineRequest {
+  int64 user_id = 1;
+  int64 auth_key_id = 2;
+  int64 session_id = 3;
+}
+
+message SetOnlineResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  bool became_online = 2;
+}
+
+message SetOfflineRequest {
+  int64 user_id = 1;
+  int64 auth_key_id = 2;
+  int64 session_id = 3;
+}
+
+message SetOfflineResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  bool became_offline = 2;
+}
+
+message GetPresenceRequest {
+  int64 user_id = 1;
+}
+
+message GetPresenceResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  bool online = 2;
+  int64 last_seen_unix = 3;
+}

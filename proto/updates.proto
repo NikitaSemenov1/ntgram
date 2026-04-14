@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package ntgram.updates.v1;
+
+import "common.proto";
+
+service UpdatesService {
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+  rpc GetDifference(GetDifferenceRequest) returns (GetDifferenceResponse);
+}
+
+message GetStateRequest {
+  int64 user_id = 1;
+}
+
+message GetStateResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int32 pts = 2;
+  int32 qts = 3;
+  int32 seq = 4;
+  int64 date = 5;
+}
+
+message GetDifferenceRequest {
+  int64 user_id = 1;
+  int32 pts = 2;
+}
+
+message PtsUpdate {
+  int32 pts = 1;
+  string update_type = 2;
+  string update_data = 3;
+  int64 date = 4;
+}
+
+message GetDifferenceResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated PtsUpdate updates = 2;
+  GetStateResponse state = 3;
+}

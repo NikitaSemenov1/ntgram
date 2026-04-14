@@ -1,0 +1,46 @@
+Metadata-Version: 2.4
+Name: ntgram
+Version: 0.1.0
+Summary: Python MTProto-compatible backend with service-oriented architecture.
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: uvloop>=0.20.0
+Requires-Dist: grpcio>=1.73.0
+Requires-Dist: grpcio-tools>=1.73.0
+Requires-Dist: protobuf>=5.27.0
+Requires-Dist: redis>=5.0.0
+Requires-Dist: asyncpg>=0.30.0
+Requires-Dist: cryptography>=44.0.0
+Requires-Dist: pydantic>=2.9.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.3.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.24.0; extra == "dev"
+Requires-Dist: ruff>=0.6.0; extra == "dev"
+
+# ntgram
+
+Service-oriented Python MTProto-compatible backend targeting MTProto client connectivity over
+TCP abridged transport.
+
+## Components
+
+- `gateway-service` - MTProto TCP edge, abridged framing, TL routing.
+- `account-service` - auth and registration flows.
+- `chat-service` - private and group chat lifecycle.
+- `message-service` - message send/list/delete.
+- `profile-service` - profile read/update.
+- `presence-service` - online/offline state and update fanout hints.
+
+## Current status
+
+This repository contains an MVP-oriented implementation skeleton with typed contracts,
+database schema, transport edge, and integration tests for routing and service interaction.
+
+## RSA keys for auth handshake
+
+Gateway handshake reads RSA PEM files from:
+- `NTGRAM_RSA_PRIVATE_KEY_PATH` (default `./ntgram/keys/private.pem`)
+- `NTGRAM_RSA_PUBLIC_KEY_PATH` (default `./ntgram/keys/public.pem`)
+
+Generate a keypair with:
+- `make gen-rsa`
