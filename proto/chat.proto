@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package ntgram.chat.v1;
+
+import "common.proto";
+
+service ChatService {
+  rpc CreatePrivateDialog(CreatePrivateDialogRequest) returns (CreatePrivateDialogResponse);
+  rpc CreateGroupChat(CreateGroupChatRequest) returns (CreateGroupChatResponse);
+  rpc AddChatUser(AddChatUserRequest) returns (AddChatUserResponse);
+  rpc DeleteChatUser(DeleteChatUserRequest) returns (DeleteChatUserResponse);
+  rpc EditChatTitle(EditChatTitleRequest) returns (EditChatTitleResponse);
+  rpc GetFullChat(GetFullChatRequest) returns (GetFullChatResponse);
+  rpc ListDialogs(ListDialogsRequest) returns (ListDialogsResponse);
+}
+
+message CreatePrivateDialogRequest {
+  int64 actor_user_id = 1;
+  int64 peer_user_id = 2;
+}
+
+message CreatePrivateDialogResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 dialog_id = 2;
+}
+
+message CreateGroupChatRequest {
+  int64 actor_user_id = 1;
+  string title = 2;
+  repeated int64 member_user_ids = 3;
+}
+
+message CreateGroupChatResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 chat_id = 2;
+}
+
+message AddChatUserRequest {
+  int64 actor_user_id = 1;
+  int64 chat_id = 2;
+  int64 user_id = 3;
+}
+
+message AddChatUserResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+}
+
+message DeleteChatUserRequest {
+  int64 actor_user_id = 1;
+  int64 chat_id = 2;
+  int64 user_id = 3;
+}
+
+message DeleteChatUserResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+}
+
+message EditChatTitleRequest {
+  int64 actor_user_id = 1;
+  int64 chat_id = 2;
+  string title = 3;
+}
+
+message EditChatTitleResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+}
+
+message GetFullChatRequest {
+  int64 chat_id = 1;
+}
+
+message GetFullChatResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 chat_id = 2;
+  string title = 3;
+  int64 creator_id = 4;
+  repeated int64 member_user_ids = 5;
+}
+
+message ListDialogsRequest {
+  int64 actor_user_id = 1;
+}
+
+message Dialog {
+  int64 dialog_id = 1;
+  int64 peer_id = 2;
+  bool is_group = 3;
+}
+
+message ListDialogsResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated Dialog dialogs = 2;
+}

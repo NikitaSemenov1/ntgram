@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package ntgram.common.v1;
+
+message UserRef {
+  int64 user_id = 1;
+}
+
+message RpcError {
+  int32 code = 1;
+  string message = 2;
+}
+
+message ServiceResponseMeta {
+  bool ok = 1;
+  RpcError error = 2;
+}

@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ntgram
+      POSTGRES_PASSWORD: ntgram
+      POSTGRES_DB: ntgram
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ntgram"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  services:
+    build:
+      context: .
+      target: services
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NTGRAM_POSTGRES_DSN: postgresql://ntgram:ntgram@postgres:5432/ntgram
+      NTGRAM_REDIS_DSN: redis://redis:6379/0
+    ports:
+      - "50051:50051"
+      - "50052:50052"
+      - "50053:50053"
+      - "50054:50054"
+      - "50055:50055"
+
+  gateway:
+    build:
+      context: .
+      target: gateway
+    depends_on:
+      services:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      NTGRAM_GATEWAY_HOST: "0.0.0.0"
+      NTGRAM_GATEWAY_PORT: "10443"
+      NTGRAM_REDIS_DSN: redis://redis:6379/0
+      NTGRAM_RSA_PRIVATE_KEY_PATH: /app/keys/private.pem
+      NTGRAM_RSA_PUBLIC_KEY_PATH: /app/keys/public.pem
+      NTGRAM_ACCOUNT_ADDR: services:50051
+      NTGRAM_CHAT_ADDR: services:50052
+      NTGRAM_MESSAGE_ADDR: services:50053
+      NTGRAM_PROFILE_ADDR: services:50054
+      NTGRAM_STATUS_ADDR: services:50055
+      NTGRAM_UPDATES_ADDR: services:50056
+    ports:
+      - "10443:10443"
+
+volumes:
+  pgdata:

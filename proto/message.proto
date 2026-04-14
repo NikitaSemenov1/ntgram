@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package ntgram.message.v1;
+
+import "common.proto";
+
+service MessageService {
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc DeleteMessages(DeleteMessagesRequest) returns (DeleteMessagesResponse);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc ReadHistory(ReadHistoryRequest) returns (ReadHistoryResponse);
+}
+
+message SendMessageRequest {
+  int64 actor_user_id = 1;
+  int64 dialog_id = 2;
+  string text = 3;
+  int64 random_id = 4;
+}
+
+message SendMessageResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 message_id = 2;
+  int32 pts = 3;
+}
+
+message DeleteMessagesRequest {
+  int64 actor_user_id = 1;
+  int64 dialog_id = 2;
+  repeated int64 message_ids = 3;
+  bool revoke = 4;
+}
+
+message DeleteMessagesResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated int64 deleted_ids = 2;
+  int32 pts = 3;
+}
+
+message ListMessagesRequest {
+  int64 actor_user_id = 1;
+  int64 dialog_id = 2;
+  int32 limit = 3;
+}
+
+message Message {
+  int64 message_id = 1;
+  int64 from_user_id = 2;
+  string text = 3;
+  int64 date = 4;
+}
+
+message ListMessagesResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated Message messages = 2;
+}
+
+message ReadHistoryRequest {
+  int64 actor_user_id = 1;
+  int64 dialog_id = 2;
+  int64 max_id = 3;
+}
+
+message ReadHistoryResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int32 pts = 2;
+}

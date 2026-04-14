@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package ntgram.profile.v1;
+
+import "common.proto";
+
+service ProfileService {
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+}
+
+message GetProfileRequest {
+  int64 actor_user_id = 1;
+  int64 target_user_id = 2;
+}
+
+message Profile {
+  int64 user_id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string bio = 4;
+}
+
+message GetProfileResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  Profile profile = 2;
+}
+
+message UpdateProfileRequest {
+  int64 actor_user_id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string bio = 4;
+}
+
+message UpdateProfileResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  Profile profile = 2;
+}
