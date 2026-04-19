@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
 from ntgram.tl.codec import (
+    decode_tl_object,
     decode_tl_request,
     encode_tl_response,
-    decode_tl_object,
 )
 from ntgram.tl.models import TlResponse
 from ntgram.tl.registry import default_schema_registry
@@ -54,3 +55,36 @@ def test_binary_tl_request_response_roundtrip() -> None:
     name, fields = decode_tl_object(encoded_response)
     assert name == "pong"
     assert fields["ping_id"] == 42
+
+
+@pytest.mark.asyncio
+async def test_help_get_config_returns_serializable_config() -> None:
+    pytest.importorskip("grpc")
+    from ntgram.gateway.mtproto.session_store import SessionStore
+    from ntgram.gateway.push_registry import PushRegistry
+    from ntgram.gateway.router import GatewayRouter
+    from ntgram.gateway.update_bus import UpdateBus
+    from ntgram.tl.models import TlRequest
+
+    router = GatewayRouter(
+        grpc_bridge=AsyncMock(),
+        sessions=SessionStore(),
+        update_bus=UpdateBus(PushRegistry()),
+    )
+    response = await router.dispatch(
+        TlRequest(
+            constructor_id=0,
+            constructor="help.getConfig",
+            req_msg_id=101,
+            auth_key_id=0,
+            session_id=1,
+            payload={},
+        )
+    )
+    encoded = encode_tl_response(response)
+    name, fields = decode_tl_object(encoded)
+    assert name == "rpc_result"
+    inner = fields["result"]
+    assert inner["_constructor"] == "rpc_error"
+    assert inner["error_code"] == 400
+    assert inner["error_message"] == "ERR_NOT_IMPLEMENTED"

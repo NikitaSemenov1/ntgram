@@ -7,7 +7,7 @@ from dataclasses import dataclass
 @dataclass(slots=True, frozen=True)
 class GatewaySettings:
     host: str = os.getenv("NTGRAM_GATEWAY_HOST", "0.0.0.0")
-    port: int = int(os.getenv("NTGRAM_GATEWAY_PORT", "10443"))
+    port: int = int(os.getenv("NTGRAM_GATEWAY_PORT", "8080"))
     rsa_private_key_path: str = os.getenv("NTGRAM_RSA_PRIVATE_KEY_PATH", "./keys/private.pem")
     rsa_public_key_path: str = os.getenv("NTGRAM_RSA_PUBLIC_KEY_PATH", "./keys/public.pem")
 

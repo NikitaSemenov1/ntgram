@@ -19,7 +19,9 @@ class AuthSession:
     qts: int = 0
     pts: int = 0
     seq: int = 0
+    layer: int = 0
     date: int = field(default_factory=lambda: int(time.time()))
+    pending_outgoing_msg_ids: set[int] = field(default_factory=set)
 
     def touch_msg_id(self, msg_id: int) -> bool:
         """Return True for new msg_id, False if replay/old."""
@@ -125,6 +127,33 @@ class SessionStore:
                     old.discard(auth_key_id)
             session.user_id = user_id
             self._by_user.setdefault(user_id, set()).add(auth_key_id)
+
+    def register_outgoing_msg(self, auth_key_id: int, msg_id: int) -> bool:
+        session = self._sessions.get(auth_key_id)
+        if session is None:
+            return False
+        session.pending_outgoing_msg_ids.add(msg_id)
+        return True
+
+    def ack_outgoing_msgs(self, auth_key_id: int, msg_ids: list[int]) -> int:
+        session = self._sessions.get(auth_key_id)
+        if session is None:
+            return 0
+        removed = 0
+        for msg_id in msg_ids:
+            if msg_id in session.pending_outgoing_msg_ids:
+                session.pending_outgoing_msg_ids.remove(msg_id)
+                removed += 1
+        return removed
+
+    def update_layer(self, auth_key_id: int, layer: int) -> bool:
+        if layer <= 0:
+            return False
+        session = self._sessions.get(auth_key_id)
+        if session is None:
+            return False
+        session.layer = layer
+        return True
 
     def get_sessions_for_user(self, user_id: int) -> list[AuthSession]:
         """Return all sessions bound to a user_id."""

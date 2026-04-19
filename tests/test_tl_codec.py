@@ -12,7 +12,10 @@ from ntgram.tl.codec import (
 from ntgram.tl.models import TlResponse
 from ntgram.tl.registry import default_schema_registry
 from ntgram.tl.serializer import (
+    BOOL_FALSE_CONSTRUCTOR_ID,
+    BOOL_TRUE_CONSTRUCTOR_ID,
     _Reader,
+    _as_signed_int32,
     _write_int32,
     _write_int64,
     serialize_object,
@@ -195,6 +198,39 @@ def test_decode_raw_tl_body() -> None:
     request = decode_tl_request(body)
     assert request.constructor == "ping"
     assert request.payload["ping_id"] == 42
+
+
+def test_write_int32_accepts_unsigned_bool_constructor_ids() -> None:
+    """Bool constructor ids are uint32 in schema and must pack as signed int32."""
+    encoded_true = _write_int32(BOOL_TRUE_CONSTRUCTOR_ID)
+    encoded_false = _write_int32(BOOL_FALSE_CONSTRUCTOR_ID)
+    assert encoded_true == struct.pack("<i", _as_signed_int32(BOOL_TRUE_CONSTRUCTOR_ID))
+    assert encoded_false == struct.pack("<i", _as_signed_int32(BOOL_FALSE_CONSTRUCTOR_ID))
+
+
+def test_decode_msg_container_with_single_inner_message() -> None:
+    """Decode msg_container containing one ping message."""
+    ping_body = serialize_object("ping", {"ping_id": 42}, _SCHEMA)
+    container_spec = _SCHEMA.constructors_by_name["msg_container"]
+    message_id = 0x1122334455667788
+    seqno = 1
+    body = (
+        _write_int32(container_spec.id)
+        + _write_int32(1)
+        + _write_int64(message_id)
+        + _write_int32(seqno)
+        + _write_int32(len(ping_body))
+        + ping_body
+    )
+
+    request = decode_tl_request(body)
+    assert request.constructor == "msg_container"
+    messages = request.payload["messages"]
+    assert isinstance(messages, list)
+    assert len(messages) == 1
+    assert messages[0]["constructor"] == "ping"
+    assert messages[0]["req_msg_id"] == message_id
+    assert messages[0]["payload"]["ping_id"] == 42
 
 
 # ---------------------------------------------------------------------------

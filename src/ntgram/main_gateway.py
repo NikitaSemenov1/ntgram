@@ -12,8 +12,12 @@ from ntgram.settings import GatewaySettings, ServiceSettings
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     uvloop.install()
-    server = GatewayServer(GatewaySettings(), ServiceSettings())
-    asyncio.run(server.serve())
+
+    async def _run() -> None:
+        server = GatewayServer(GatewaySettings(), ServiceSettings())
+        await server.serve()
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":
