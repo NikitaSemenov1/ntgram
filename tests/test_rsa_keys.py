@@ -41,3 +41,11 @@ def test_load_rsa_keypair_rejects_mismatch(tmp_path: Path) -> None:
     _, public_path = _write_pair(tmp_path, suffix="_b")
     with pytest.raises(RsaKeyError):
         load_rsa_keypair(private_path, public_path)
+
+
+def test_repository_keypair_has_expected_mtproto_fingerprint() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    private_path = repo_root / "keys" / "private.pem"
+    public_path = repo_root / "keys" / "public.pem"
+    pair = load_rsa_keypair(str(private_path), str(public_path))
+    assert pair.fingerprint == int("a9e071c1771060cd", 16)

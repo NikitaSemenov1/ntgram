@@ -89,7 +89,7 @@ class _Reader:
 # ---------------------------------------------------------------------------
 
 def _write_int32(value: int) -> bytes:
-    return struct.pack("<i", value & 0xFFFFFFFF if value >= 0 else value)
+    return struct.pack("<i", _as_signed_int32(value))
 
 
 def _write_uint32(value: int) -> bytes:

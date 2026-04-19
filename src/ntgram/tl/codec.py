@@ -18,6 +18,7 @@ from ntgram.tl.serializer import (
 )
 
 _SCHEMA = default_schema_registry()
+_MSG_CONTAINER_CID = _SCHEMA.constructors_by_name["msg_container"].id
 
 
 class TlCodecError(ValueError):
@@ -64,6 +65,38 @@ def _deserialize_tl_body(
     """Deserialize a raw TL body (constructor_id + fields)."""
     reader = _Reader(data)
     cid = reader.read_int32()
+
+    if cid == _MSG_CONTAINER_CID:
+        messages_count = reader.read_int32()
+        if messages_count < 0:
+            raise TlCodecError("msg_container.messages count must be non-negative")
+        messages: list[dict[str, Any]] = []
+        for _ in range(messages_count):
+            msg_id = reader.read_int64()
+            seqno = reader.read_int32()
+            body_len = reader.read_int32()
+            if body_len < 0 or body_len > reader.remaining:
+                raise TlCodecError("msg_container message body length is invalid")
+            body = reader._read(body_len)
+            constructor_name, fields = decode_tl_object(body)
+            constructor_id = struct.unpack("<i", body[:4])[0]
+            messages.append(
+                {
+                    "constructor_id": constructor_id,
+                    "constructor": constructor_name,
+                    "req_msg_id": msg_id,
+                    "seq_no": seqno,
+                    "payload": fields,
+                },
+            )
+        return TlRequest(
+            constructor_id=cid,
+            constructor="msg_container",
+            req_msg_id=req_msg_id,
+            auth_key_id=auth_key_id,
+            session_id=session_id,
+            payload={"messages": messages},
+        )
 
     spec = _SCHEMA.methods_by_id.get(cid)
     if spec is not None:

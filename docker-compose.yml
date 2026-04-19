@@ -56,7 +56,7 @@ services:
         condition: service_healthy
     environment:
       NTGRAM_GATEWAY_HOST: "0.0.0.0"
-      NTGRAM_GATEWAY_PORT: "10443"
+      NTGRAM_GATEWAY_PORT: "8080"
       NTGRAM_REDIS_DSN: redis://redis:6379/0
       NTGRAM_RSA_PRIVATE_KEY_PATH: /app/keys/private.pem
       NTGRAM_RSA_PUBLIC_KEY_PATH: /app/keys/public.pem
@@ -67,7 +67,7 @@ services:
       NTGRAM_STATUS_ADDR: services:50055
       NTGRAM_UPDATES_ADDR: services:50056
     ports:
-      - "10443:10443"
+      - "8080:8080"
 
 volumes:
   pgdata:

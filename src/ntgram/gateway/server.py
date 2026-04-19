@@ -6,6 +6,7 @@ import secrets
 import time
 from enum import StrEnum
 
+from ntgram.errors import RpcFailure
 from ntgram.gateway.grpc_bridge import GrpcBridge
 from ntgram.gateway.mtproto.auth_handshake import AuthHandshakeProcessor
 from ntgram.gateway.mtproto.encrypted_layer import (
@@ -15,6 +16,7 @@ from ntgram.gateway.mtproto.encrypted_layer import (
 )
 from ntgram.gateway.mtproto.rsa_keys import load_rsa_keypair
 from ntgram.gateway.mtproto.service_semantics import (
+    ServiceSemanticsError,
     decode_service_request,
     wrap_rpc_error,
 )
@@ -23,15 +25,19 @@ from ntgram.gateway.push_registry import PushRegistry, PushSlot
 from ntgram.gateway.router import GatewayRouter
 from ntgram.gateway.router_contracts import ServiceName
 from ntgram.gateway.transport.abridged import (
+    ABRIDGED_MARKER,
     TRANSPORT_ERROR_BAD_LENGTH,
     TRANSPORT_ERROR_BAD_PACKET,
     AbridgedProtocolError,
     compute_quick_ack_token,
-    read_abridged_marker,
     read_abridged_packet,
     write_abridged_packet,
     write_abridged_quick_ack,
     write_transport_error,
+)
+from ntgram.gateway.transport.obfuscation import (
+    ObfuscationProtocolError,
+    parse_obfuscation_init,
 )
 from ntgram.gateway.update_bus import UpdateBus
 from ntgram.settings import GatewaySettings, ServiceSettings
@@ -87,6 +93,117 @@ class GatewayServer:
         value -= value % 4
         return value + 1
 
+    @staticmethod
+    def _make_encrypted_server_msg_id() -> int:
+        """Generate msg_id compatible with encrypted_layer validation."""
+        value = (int(time.time()) << 32) | secrets.randbits(30)
+        return value - (value % 4)
+
+    @staticmethod
+    def _extract_ack_ids(payload: dict) -> list[int]:
+        raw_ids = payload.get("msg_ids", [])
+        if not isinstance(raw_ids, list):
+            return []
+        return [int(item) for item in raw_ids if isinstance(item, int)]
+
+    @staticmethod
+    def _log_msg_container(peer: object, request: TlRequest) -> None:
+        if request.constructor != "msg_container":
+            return
+        messages = request.payload.get("messages")
+        if not isinstance(messages, list):
+            logger.info("msg_container malformed: peer=%s messages_type=%s", peer, type(messages).__name__)
+            return
+        logger.info(
+            "msg_container unpacked: peer=%s auth_key_id=%s session_id=%s messages=%s",
+            peer,
+            request.auth_key_id,
+            request.session_id,
+            len(messages),
+        )
+        for index, item in enumerate(messages):
+            if not isinstance(item, dict):
+                logger.info(
+                    "msg_container item: peer=%s index=%s malformed_item_type=%s",
+                    peer,
+                    index,
+                    type(item).__name__,
+                )
+                continue
+            logger.info(
+                "msg_container item: peer=%s index=%s constructor=%s req_msg_id=%s seq_no=%s",
+                peer,
+                index,
+                item.get("constructor"),
+                item.get("req_msg_id"),
+                item.get("seq_no"),
+            )
+
+    @staticmethod
+    def _log_outbound_response(
+        peer: object,
+        response: TlResponse,
+        *,
+        source: str,
+        encrypted: bool,
+        auth_key_id: int,
+        session_id: int,
+        request_constructor: str | None = None,
+        request_req_msg_id: int | None = None,
+    ) -> None:
+        outer_constructor = "<empty>"
+        inner_constructor = "-"
+        if isinstance(response.result, dict):
+            raw_outer = response.result.get("constructor")
+            if isinstance(raw_outer, str):
+                outer_constructor = raw_outer
+            if outer_constructor == "rpc_result":
+                nested = response.result.get("result")
+                if isinstance(nested, dict):
+                    raw_inner = nested.get("constructor")
+                    if isinstance(raw_inner, str):
+                        inner_constructor = raw_inner
+        logger.info(
+            "outbound response: peer=%s source=%s request_constructor=%s request_req_msg_id=%s response_req_msg_id=%s constructor=%s inner_constructor=%s auth_key_id=%s session_id=%s encrypted=%s",
+            peer,
+            source,
+            request_constructor,
+            request_req_msg_id,
+            response.req_msg_id,
+            outer_constructor,
+            inner_constructor,
+            auth_key_id,
+            session_id,
+            encrypted,
+        )
+
+    def _bind_authenticated_user(
+        self,
+        request: TlRequest,
+        response: TlResponse,
+        push_slot: PushSlot | None,
+    ) -> tuple[int | None, PushSlot | None]:
+        if request.constructor not in {"auth.signIn", "auth.signUp"}:
+            return None, push_slot
+        nested = (
+            response.result.get("result", {})
+            if isinstance(response.result, dict) else {}
+        )
+        user_id = nested.get("user_id")
+        if not isinstance(user_id, int) or request.auth_key_id == 0:
+            return None, push_slot
+        self._sessions.bind_user(request.auth_key_id, user_id)
+        if push_slot is None:
+            sess = self._sessions.get_session(request.auth_key_id)
+            push_slot = PushSlot(
+                user_id=user_id,
+                auth_key_id=request.auth_key_id,
+                session_id=request.session_id,
+                session=sess,
+            )
+            self._push_registry.register(push_slot)
+        return user_id, push_slot
+
     async def close(self) -> None:
         await self._grpc_bridge.close()
 
@@ -118,13 +235,17 @@ class GatewayServer:
         )
         encoded = encode_tl_response(response)
         if push_slot.session is not None:
+            server_msg_id = self._make_encrypted_server_msg_id()
             encoded = encode_encrypted_message(
                 session=push_slot.session,
                 session_id=push_slot.session_id,
-                msg_id=self._make_server_msg_id(),
+                msg_id=server_msg_id,
                 seq_no=1,
                 message_data=encoded,
                 direction="server",
+            )
+            self._sessions.register_outgoing_msg(
+                push_slot.auth_key_id, server_msg_id,
             )
         return encoded
 
@@ -135,19 +256,31 @@ class GatewayServer:
     ) -> None:
         peer = writer.get_extra_info("peername")
         logger.info("new connection from %s", peer)
+        handshake_session_id = secrets.randbits(63) | 1
         current_user_id: int | None = None
         current_auth_key_id: int = 0
         current_session_id: int = 0
         transport_state = TransportState.INIT
         push_slot: PushSlot | None = None
+        transport_encrypt = None
+        transport_decrypt = None
         try:
             transport_state = TransportState.ABRIDGED_MARKER
-            await read_abridged_marker(reader)
+            first = await reader.readexactly(1)
+            if first[0] != ABRIDGED_MARKER:
+                init_payload = first + await reader.readexactly(63)
+                obfuscated = parse_obfuscation_init(init_payload)
+                transport_encrypt = obfuscated.encrypt
+                transport_decrypt = obfuscated.decrypt
             transport_state = TransportState.FRAMES
 
             while True:
                 frame = await self._read_or_push(
-                    reader, writer, push_slot,
+                    reader,
+                    writer,
+                    push_slot,
+                    decrypt=transport_decrypt,
+                    encrypt=transport_encrypt,
                 )
                 if frame is None:
                     continue
@@ -155,7 +288,7 @@ class GatewayServer:
                 if frame.quick_ack_requested:
                     token = compute_quick_ack_token(frame.payload)
                     await write_abridged_quick_ack(
-                        writer, token, encrypt=None,
+                        writer, token, encrypt=transport_encrypt,
                     )
 
                 encrypted_inbound = False
@@ -171,7 +304,12 @@ class GatewayServer:
                         _, inbound_msg_id, inbound_seq_no, inner_message = (
                             decode_encrypted_message(session, frame.payload)
                         )
-                        request = decode_tl_request(inner_message)
+                        try:
+                            request = decode_tl_request(inner_message)
+                        except Exception as err:
+                            raise TlCodecError(
+                                f"decode encrypted inner TL failed: {err}"
+                            ) from err
                         encrypted_inbound = True
                         request = TlRequest(
                             constructor_id=request.constructor_id,
@@ -184,21 +322,81 @@ class GatewayServer:
                             payload=request.payload,
                         )
                     else:
-                        request = decode_tl_request(frame.payload)
+                        try:
+                            request = decode_tl_request(frame.payload)
+                        except Exception as err:
+                            raise TlCodecError(
+                                f"decode plain TL failed: {err}"
+                            ) from err
                 except EncryptedLayerError as err:
                     logger.warning("encrypted layer error: %s", err)
                     await self._handle_encrypted_error(
-                        err, maybe_auth_key_id, writer,
+                        err, maybe_auth_key_id, writer, transport_encrypt,
                     )
                     continue
 
+                if (
+                    encrypted_inbound
+                    and maybe_auth_key_id != 0
+                    and request.auth_key_id == 0
+                ):
+                    # Client may omit auth_key_id in inner TL envelope.
+                    request = TlRequest(
+                        constructor_id=request.constructor_id,
+                        constructor=request.constructor,
+                        req_msg_id=request.req_msg_id,
+                        auth_key_id=maybe_auth_key_id,
+                        session_id=request.session_id,
+                        message_id=request.message_id,
+                        seq_no=request.seq_no,
+                        payload=request.payload,
+                    )
+
                 current_auth_key_id = request.auth_key_id
                 current_session_id = request.session_id
+
+                logger.info(
+                    "inbound message: peer=%s constructor=%s req_msg_id=%s auth_key_id=%s session_id=%s encrypted=%s",
+                    peer,
+                    request.constructor,
+                    request.req_msg_id,
+                    request.auth_key_id,
+                    request.session_id,
+                    encrypted_inbound,
+                )
+                self._log_msg_container(peer, request)
+
+                if request.auth_key_id == 0 and request.constructor in {
+                    "req_pq_multi", "req_DH_params", "set_client_DH_params",
+                }:
+                    # Unencrypted auth flow has no session_id in wire format.
+                    # Keep handshake state isolated per TCP connection.
+                    request = TlRequest(
+                        constructor_id=request.constructor_id,
+                        constructor=request.constructor,
+                        req_msg_id=request.req_msg_id,
+                        auth_key_id=request.auth_key_id,
+                        session_id=handshake_session_id,
+                        message_id=request.message_id,
+                        seq_no=request.seq_no,
+                        payload=request.payload,
+                    )
+                    current_session_id = request.session_id
 
                 hs_result = self._handshake.handle(request)
                 if hs_result.handled:
                     response = hs_result.response or wrap_rpc_error(
                         request.req_msg_id, 500, "HANDSHAKE_INTERNAL",
+                    )
+                    self._log_outbound_response(
+                        peer,
+                        response,
+                        source="handshake",
+                        encrypted=encrypted_inbound,
+                        auth_key_id=request.auth_key_id,
+                        session_id=request.session_id,
+                        request_constructor=request.constructor,
+                        request_req_msg_id=request.req_msg_id,
                     )
                     encoded = encode_tl_response(response)
                     if not encrypted_inbound:
@@ -206,7 +404,35 @@ class GatewayServer:
                             self._make_server_msg_id(), encoded,
                         )
                     await write_abridged_packet(
-                        writer, encoded, encrypt=None,
+                        writer, encoded, encrypt=transport_encrypt,
+                    )
+                    continue
+
+                if request.auth_key_id == 0:
+                    if request.constructor == "msgs_ack":
+                        logger.info(
+                            "pre-auth msgs_ack skipped: peer=%s req_msg_id=%s",
+                            peer,
+                            request.req_msg_id,
+                        )
+                        continue
+                    raise TlCodecError(
+                        f"unsupported pre-auth constructor: {request.constructor}"
+                    )
+
+                if request.constructor == "msgs_ack":
+                    ack_ids = self._extract_ack_ids(request.payload)
+                    removed_count = self._sessions.ack_outgoing_msgs(
+                        request.auth_key_id,
+                        ack_ids,
+                    )
+                    logger.info(
+                        "post-auth msgs_ack processed: peer=%s auth_key_id=%s session_id=%s ack_count=%s removed=%s",
+                        peer,
+                        request.auth_key_id,
+                        request.session_id,
+                        len(ack_ids),
+                        removed_count,
                     )
                     continue
 
@@ -217,9 +443,19 @@ class GatewayServer:
                     response = wrap_rpc_error(
                         request.req_msg_id, 401, "AUTH_KEY_INVALID",
                     )
+                    self._log_outbound_response(
+                        peer,
+                        response,
+                        source="auth_check",
+                        encrypted=encrypted_inbound,
+                        auth_key_id=request.auth_key_id,
+                        session_id=request.session_id,
+                        request_constructor=request.constructor,
+                        request_req_msg_id=request.req_msg_id,
+                    )
                     encoded = encode_tl_response(response)
                     await write_abridged_packet(
-                        writer, encoded, encrypt=None,
+                        writer, encoded, encrypt=transport_encrypt,
                     )
                     continue
 
@@ -253,54 +489,101 @@ class GatewayServer:
                     except Exception:
                         logger.debug("SetOnline failed for user %s", actor_user_id)
 
-                service_requests = decode_service_request(request)
-                response = TlResponse(
-                    req_msg_id=request.req_msg_id, result={},
-                )
+                try:
+                    service_requests = decode_service_request(request)
+                except ServiceSemanticsError as err:
+                    logger.warning(
+                        "service semantics error: peer=%s constructor=%s error=%s",
+                        peer,
+                        request.constructor,
+                        err,
+                    )
+                    continue
+                if request.auth_key_id != 0:
+                    for service_request in service_requests:
+                        if service_request.invoke_layer is not None:
+                            self._sessions.update_layer(
+                                request.auth_key_id,
+                                service_request.invoke_layer,
+                            )
+                            break
+                
+                responses_to_send: list[tuple[TlRequest, TlResponse]] = []
                 for service_request in service_requests:
-                    response = await self._router.dispatch(
+                    if service_request.constructor == "msgs_ack":
+                        ack_ids = self._extract_ack_ids(service_request.payload)
+                        removed_count = self._sessions.ack_outgoing_msgs(
+                            service_request.auth_key_id,
+                            ack_ids,
+                        )
+                        logger.info(
+                            "container msgs_ack processed: peer=%s auth_key_id=%s session_id=%s ack_count=%s removed=%s",
+                            peer,
+                            service_request.auth_key_id,
+                            service_request.session_id,
+                            len(ack_ids),
+                            removed_count,
+                        )
+                        continue
+                    try:
+                        response = await self._router.dispatch(
+                            service_request,
+                        )
+                    except RpcFailure as err:
+                        if err.message == "RPC_METHOD_NOT_SUPPORTED":
+                            raise TlCodecError(
+                                f"unsupported RPC method: {service_request.constructor}"
+                            ) from err
+                        response = wrap_rpc_error(
+                            service_request.req_msg_id,
+                            err.code,
+                            err.message,
+                        )
+                    responses_to_send.append((service_request, response))
+                    bound_user_id, push_slot = self._bind_authenticated_user(
                         service_request,
+                        response,
+                        push_slot,
                     )
+                    if bound_user_id is not None:
+                        current_user_id = bound_user_id
 
-                if request.constructor in {"auth.signIn", "auth.signUp"}:
-                    nested = (
-                        response.result.get("result", {})
-                        if isinstance(response.result, dict) else {}
-                    )
-                    user_id = nested.get("user_id")
-                    if isinstance(user_id, int) and request.auth_key_id != 0:
-                        self._sessions.bind_user(
-                            request.auth_key_id, user_id,
-                        )
-                        current_user_id = user_id
-                        sess = self._sessions.get_session(
-                            request.auth_key_id,
-                        )
-                        push_slot = PushSlot(
-                            user_id=user_id,
-                            auth_key_id=request.auth_key_id,
-                            session_id=request.session_id,
-                            session=sess,
-                        )
-                        self._push_registry.register(push_slot)
+                if not responses_to_send:
+                    continue
 
-                encoded = encode_tl_response(response)
-                if encrypted_inbound and request.auth_key_id != 0:
-                    session = self._sessions.get_session(
-                        request.auth_key_id,
+                for response_request, response in responses_to_send:
+                    self._log_outbound_response(
+                        peer,
+                        response,
+                        source="rpc_dispatch",
+                        encrypted=encrypted_inbound,
+                        auth_key_id=response_request.auth_key_id,
+                        session_id=response_request.session_id,
+                        request_constructor=response_request.constructor,
+                        request_req_msg_id=response_request.req_msg_id,
                     )
-                    if session is not None:
-                        encoded = encode_encrypted_message(
-                            session=session,
-                            session_id=request.session_id,
-                            msg_id=self._make_server_msg_id(),
-                            seq_no=(request.seq_no or 0) + 1,
-                            message_data=encoded,
-                            direction="server",
+                    encoded = encode_tl_response(response)
+                    if encrypted_inbound and response_request.auth_key_id != 0:
+                        session = self._sessions.get_session(
+                            response_request.auth_key_id,
                         )
-                await write_abridged_packet(
-                    writer, encoded, encrypt=None,
-                )
+                        if session is not None:
+                            server_msg_id = self._make_encrypted_server_msg_id()
+                            encoded = encode_encrypted_message(
+                                session=session,
+                                session_id=response_request.session_id,
+                                msg_id=server_msg_id,
+                                seq_no=(response_request.seq_no or request.seq_no or 0) + 1,
+                                message_data=encoded,
+                                direction="server",
+                            )
+                            self._sessions.register_outgoing_msg(
+                                response_request.auth_key_id,
+                                server_msg_id,
+                            )
+                    await write_abridged_packet(
+                        writer, encoded, encrypt=transport_encrypt,
+                    )
         except AbridgedProtocolError as err:
             logger.warning(
                 "transport protocol error: %s, peer=%s, state=%s",
@@ -313,24 +596,38 @@ class GatewayServer:
             )
             try:
                 await write_transport_error(
-                    writer, error_code, encrypt=None,
+                    writer, error_code, encrypt=transport_encrypt,
                 )
             except Exception:
                 logger.debug(
                     "failed to write transport error to peer=%s", peer,
                 )
-        except TlCodecError as err:
-            logger.warning("tl codec error: %s, peer=%s", err, peer)
+        except ObfuscationProtocolError as err:
+            logger.warning(
+                "obfuscation protocol error: %s, peer=%s, state=%s",
+                err, peer, transport_state,
+            )
             try:
                 await write_transport_error(
                     writer, TRANSPORT_ERROR_BAD_PACKET, encrypt=None,
                 )
             except Exception:
                 logger.debug(
+                    "failed to write obfuscation transport error to peer=%s",
+                    peer,
+                )
+        except TlCodecError as err:
+            logger.warning("tl codec error: %s, peer=%s", err, peer)
+            try:
+                await write_transport_error(
+                    writer, TRANSPORT_ERROR_BAD_PACKET, encrypt=transport_encrypt,
+                )
+            except Exception:
+                logger.debug(
                     "failed to write transport error for TL parse peer=%s",
                     peer,
                 )
-        except (asyncio.IncompleteReadError, ConnectionError):
+        except (asyncio.IncompleteReadError, ConnectionError) as err:
             logger.info("connection closed: %s", peer)
         except Exception:
             logger.exception(
@@ -370,13 +667,15 @@ class GatewayServer:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
         push_slot: PushSlot | None,
+        decrypt=None,
+        encrypt=None,
     ):
         """Wait for either an inbound frame or a push update.
 
         Returns the AbridgedFrame if a client packet arrived,
         or None if a push update was written (caller should continue loop).
         """
-        read_coro = read_abridged_packet(reader, decrypt=None)
+        read_coro = read_abridged_packet(reader, decrypt=decrypt)
 
         if push_slot is None:
             return await read_coro
@@ -401,7 +700,7 @@ class GatewayServer:
             try:
                 encoded = self._encode_push_update(push_slot, update)
                 await write_abridged_packet(
-                    writer, encoded, encrypt=None,
+                    writer, encoded, encrypt=encrypt,
                 )
             except Exception:
                 logger.debug("failed to write push update")
@@ -416,6 +715,7 @@ class GatewayServer:
         err: EncryptedLayerError,
         maybe_auth_key_id: int,
         writer: asyncio.StreamWriter,
+        encrypt=None,
     ) -> None:
         if "bad_server_salt" not in str(err).lower():
             return
@@ -433,13 +733,28 @@ class GatewayServer:
             error_code=48,
             error_message="BAD_SERVER_SALT",
         )
+        self._log_outbound_response(
+            writer.get_extra_info("peername"),
+            response,
+            source="encrypted_error",
+            encrypted=True,
+            auth_key_id=maybe_auth_key_id,
+            session_id=session_for_salt.session_id,
+            request_constructor="encrypted_message",
+            request_req_msg_id=0,
+        )
         encoded = encode_tl_response(response)
+        server_msg_id = self._make_encrypted_server_msg_id()
         encoded = encode_encrypted_message(
             session_for_salt,
             session_for_salt.session_id,
-            self._make_server_msg_id(),
+            server_msg_id,
             1,
             encoded,
             direction="server",
         )
-        await write_abridged_packet(writer, encoded, encrypt=None)
+        self._sessions.register_outgoing_msg(
+            maybe_auth_key_id,
+            server_msg_id,
+        )
+        await write_abridged_packet(writer, encoded, encrypt=encrypt)

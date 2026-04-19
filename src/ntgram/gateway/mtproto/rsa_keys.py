@@ -18,12 +18,25 @@ class RsaKeyPair:
     fingerprint: int
 
 
+def _tl_serialize_bytes(value: bytes) -> bytes:
+    length = len(value)
+    if length <= 253:
+        out = bytes([length]) + value
+    else:
+        out = bytes([254]) + length.to_bytes(4, "little")[:3] + value
+    padding = (4 - (len(out) % 4)) % 4
+    if padding:
+        out += b"\x00" * padding
+    return out
+
+
 def _compute_mtproto_fingerprint(public_key: rsa.RSAPublicKey) -> int:
     public_numbers = public_key.public_numbers()
     n_bytes = public_numbers.n.to_bytes((public_numbers.n.bit_length() + 7) // 8, "big")
     e_bytes = public_numbers.e.to_bytes((public_numbers.e.bit_length() + 7) // 8, "big")
     digest = hashes.Hash(hashes.SHA1())
-    digest.update(n_bytes + e_bytes)
+    # MTProto fingerprint uses SHA1 over TL-serialized `bytes` n and e.
+    digest.update(_tl_serialize_bytes(n_bytes) + _tl_serialize_bytes(e_bytes))
     sha1 = digest.finalize()
     return int.from_bytes(sha1[-8:], "little", signed=False)
 

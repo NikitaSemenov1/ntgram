@@ -40,26 +40,56 @@ class HandshakeResult:
 
 
 def _make_pq() -> tuple[int, int, int]:
-    """Generate a semi-prime pq = p * q where p < q are small primes."""
-    from sympy import isprime  # type: ignore[import-untyped]
+    """Generate a 64-bit-ish semi-prime pq = p * q where p < q.
 
+    We avoid optional dependencies and use a deterministic Miller-Rabin test
+    suitable for 32-bit candidates.
+    """
     while True:
-        p = secrets.randbits(31) | 1
-        if p > 2 and isprime(p):
+        p = (1 << 30) | secrets.randbits(30) | 1
+        if _is_probable_prime_32(p):
             break
     while True:
-        q = secrets.randbits(31) | 1
-        if q > 2 and q != p and isprime(q):
+        q = (1 << 30) | secrets.randbits(30) | 1
+        if q != p and _is_probable_prime_32(q):
             break
     if p > q:
         p, q = q, p
     return p, q, p * q
 
 
-def _make_pq_simple() -> tuple[int, int, int]:
-    """Use a fixed known PQ for predictable handshake (no sympy dependency)."""
-    p, q = 1229, 1231
-    return p, q, p * q
+def _is_probable_prime_32(value: int) -> bool:
+    if value < 2:
+        return False
+    small_primes = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29)
+    for prime in small_primes:
+        if value == prime:
+            return True
+        if value % prime == 0:
+            return False
+
+    d = value - 1
+    s = 0
+    while d % 2 == 0:
+        d //= 2
+        s += 1
+
+    # Sufficient fixed bases for 32-bit integers.
+    for base in (2, 3, 5, 7, 11):
+        if base % value == 0:
+            continue
+        x = pow(base, d, value)
+        if x == 1 or x == value - 1:
+            continue
+        composite = True
+        for _ in range(s - 1):
+            x = (x * x) % value
+            if x == value - 1:
+                composite = False
+                break
+        if composite:
+            return False
+    return True
 
 
 def _int_to_bytes_tl(value: int) -> bytes:
@@ -91,18 +121,32 @@ class AuthHandshakeProcessor:
     def __init__(self, sessions: SessionStore, rsa_keypair: RsaKeyPair) -> None:
         self._sessions = sessions
         self._rsa_keypair = rsa_keypair
-        try:
-            self._p, self._q, self._pq = _make_pq()
-        except ImportError:
-            self._p, self._q, self._pq = _make_pq_simple()
+        self._p, self._q, self._pq = _make_pq()
 
     def handle(self, request: TlRequest) -> HandshakeResult:
+        if request.constructor in {
+            "req_pq_multi", "req_DH_params", "set_client_DH_params",
+        }:
+            hs = self._sessions.get_or_create_handshake(request.session_id)
+            logger.info(
+                "handshake step received: session_id=%s stage=%s constructor=%s req_msg_id=%s",
+                request.session_id,
+                hs.stage,
+                request.constructor,
+                request.req_msg_id,
+            )
         if request.constructor == "req_pq_multi":
-            return HandshakeResult(True, self._on_req_pq_multi(request))
+            response = self._on_req_pq_multi(request)
+            self._log_handshake_response(request, response)
+            return HandshakeResult(True, response)
         if request.constructor == "req_DH_params":
-            return HandshakeResult(True, self._on_req_dh_params(request))
+            response = self._on_req_dh_params(request)
+            self._log_handshake_response(request, response)
+            return HandshakeResult(True, response)
         if request.constructor == "set_client_DH_params":
-            return HandshakeResult(True, self._on_set_client_dh_params(request))
+            response = self._on_set_client_dh_params(request)
+            self._log_handshake_response(request, response)
+            return HandshakeResult(True, response)
         return HandshakeResult(False, None)
 
     # ------------------------------------------------------------------
@@ -250,10 +294,10 @@ class AuthHandshakeProcessor:
             decrypted = tmp_aes_decrypt(encrypted_data, hs.server_nonce, hs.new_nonce)
         except Exception as exc:
             logger.warning("tmp_aes decrypt failed: %s", exc)
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "TMP_AES_DECRYPT_FAILED")
 
         if len(decrypted) < 20:
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "CLIENT_DH_TOO_SHORT")
         sha1_prefix = decrypted[:20]
         inner_payload = decrypted[20:]
 
@@ -264,38 +308,43 @@ class AuthHandshakeProcessor:
             name, fields = deserialize_from_reader(reader, registry)
         except Exception as exc:
             logger.warning("failed to parse client_DH_inner_data: %s", exc)
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "CLIENT_DH_PARSE_FAILED")
 
         consumed = inner_payload[:reader.offset]
         expected_sha1 = hashlib.sha1(consumed).digest()
         if expected_sha1 != sha1_prefix:
             logger.warning("client_DH_inner_data SHA1 mismatch")
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "CLIENT_DH_SHA1_MISMATCH")
 
         if name != "client_DH_inner_data":
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "CLIENT_DH_CONSTRUCTOR_INVALID")
 
         if fields.get("nonce") != hs.nonce or fields.get("server_nonce") != hs.server_nonce:
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "CLIENT_DH_NONCE_MISMATCH")
 
         g_b_bytes = fields.get("g_b", b"")
         g_b = int.from_bytes(g_b_bytes, "big")
 
         if g_b <= 1 or g_b >= DH_PRIME - 1:
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "CLIENT_G_B_OUT_OF_RANGE")
 
         try:
             auth_key = compute_auth_key(g_b, hs.dh_secret_a)
         except ValueError:
-            return self._dh_gen_fail(hs)
+            return self._dh_gen_fail(hs, "AUTH_KEY_DERIVATION_FAILED")
 
         auth_key_aux_hash = SessionStore.make_auth_key_aux_hash(auth_key)
 
-        self._sessions.complete_handshake(
+        session = self._sessions.complete_handshake(
             session_id=request.session_id,
             auth_key=auth_key,
             new_nonce=hs.new_nonce,
             server_nonce=hs.server_nonce,
+        )
+        logger.info(
+            "handshake completed: session_id=%s auth_key_id=%s",
+            request.session_id,
+            session.auth_key_id,
         )
 
         nnh1 = _new_nonce_hash(hs.new_nonce, 1, auth_key_aux_hash)
@@ -314,7 +363,12 @@ class AuthHandshakeProcessor:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _dh_gen_fail(self, hs) -> TlResponse:
+    def _dh_gen_fail(self, hs, reason: str = "UNKNOWN") -> TlResponse:
+        logger.warning(
+            "handshake dh_gen_fail: stage=%s reason=%s",
+            hs.stage,
+            reason,
+        )
         nnh3 = 0
         if hs.new_nonce is not None:
             nnh3 = _new_nonce_hash(hs.new_nonce, 3, 0)
@@ -330,9 +384,38 @@ class AuthHandshakeProcessor:
 
     @staticmethod
     def _error_response(request: TlRequest, message: str) -> TlResponse:
+        logger.warning(
+            "handshake error response: session_id=%s constructor=%s error=%s",
+            request.session_id,
+            request.constructor,
+            message,
+        )
         return TlResponse(
             req_msg_id=request.req_msg_id,
             result={},
             error_code=400,
             error_message=message,
+        )
+
+    @staticmethod
+    def _log_handshake_response(request: TlRequest, response: TlResponse) -> None:
+        if response.error_code is not None:
+            logger.warning(
+                "handshake step failed: session_id=%s constructor=%s error_code=%s error_message=%s",
+                request.session_id,
+                request.constructor,
+                response.error_code,
+                response.error_message,
+            )
+            return
+        result_constructor = (
+            response.result.get("constructor")
+            if isinstance(response.result, dict)
+            else None
+        )
+        logger.info(
+            "handshake step sent: session_id=%s constructor=%s response_constructor=%s",
+            request.session_id,
+            request.constructor,
+            result_constructor,
         )

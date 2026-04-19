@@ -51,6 +51,9 @@ class GatewayRouter:
         if request.constructor == "updates.getDifference":
             return await self._handle_get_difference(request)
 
+        if request.constructor == "help.getConfig":
+            return self._handle_help_get_config(request)
+
         route = ROUTES_BY_CONSTRUCTOR_ID.get(request.constructor_id)
         if route is None:
             route = ROUTES_BY_CONSTRUCTOR.get(request.constructor)
@@ -174,3 +177,12 @@ class GatewayRouter:
                 await self._update_bus.notify_status_change(
                     user_id, online=False,
                 )
+
+    @staticmethod
+    def _handle_help_get_config(request: TlRequest) -> TlResponse:
+        logger.info("help.getConfig is not implemented yet")
+        return wrap_rpc_error(
+            request.req_msg_id,
+            400,
+            "ERR_NOT_IMPLEMENTED",
+        )
