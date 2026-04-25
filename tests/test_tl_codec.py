@@ -233,6 +233,15 @@ def test_decode_msg_container_with_single_inner_message() -> None:
     assert messages[0]["payload"]["ping_id"] == 42
 
 
+def test_langpack_get_languages_decode_empty_body() -> None:
+    """Current official clients send ``langpack.getLanguages`` with ctor only (no params)."""
+    spec = _SCHEMA.methods_by_name["langpack.getLanguages"]
+    body = _write_int32(_as_signed_int32(spec.id))
+    request = decode_tl_request(body)
+    assert request.constructor == "langpack.getLanguages"
+    assert request.payload == {}
+
+
 # ---------------------------------------------------------------------------
 # Generic object fallback for business logic
 # ---------------------------------------------------------------------------

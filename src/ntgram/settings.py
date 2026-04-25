@@ -10,6 +10,9 @@ class GatewaySettings:
     port: int = int(os.getenv("NTGRAM_GATEWAY_PORT", "8080"))
     rsa_private_key_path: str = os.getenv("NTGRAM_RSA_PRIVATE_KEY_PATH", "./keys/private.pem")
     rsa_public_key_path: str = os.getenv("NTGRAM_RSA_PUBLIC_KEY_PATH", "./keys/public.pem")
+    log_path: str = os.getenv("NTGRAM_GATEWAY_LOG_PATH", "./.cursor/gateway.log")
+    # Empty: use default next to install root (see GatewayRouter._help_get_config_file_default).
+    help_get_config_path: str = os.getenv("NTGRAM_HELP_GET_CONFIG_PATH", "")
 
 
 @dataclass(slots=True, frozen=True)

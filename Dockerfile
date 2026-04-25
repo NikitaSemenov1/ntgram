@@ -20,7 +20,8 @@ PY
 COPY migrations/ migrations/
 COPY scripts/ scripts/
 COPY keys/ keys/
-COPY docs/knowledge/mtproto/ docs/knowledge/mtproto/
+COPY config/ config/
+COPY tl/ tl/
 COPY src/ src/
 
 FROM base AS gateway

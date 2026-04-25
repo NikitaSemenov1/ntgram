@@ -19,6 +19,7 @@ from ntgram.tl.serializer import (
 
 _SCHEMA = default_schema_registry()
 _MSG_CONTAINER_CID = _SCHEMA.constructors_by_name["msg_container"].id
+_MAX_CONTAINER_MESSAGES = 1024
 
 
 class TlCodecError(ValueError):
@@ -70,12 +71,14 @@ def _deserialize_tl_body(
         messages_count = reader.read_int32()
         if messages_count < 0:
             raise TlCodecError("msg_container.messages count must be non-negative")
+        if messages_count > _MAX_CONTAINER_MESSAGES:
+            raise TlCodecError("msg_container.messages count exceeds 1024")
         messages: list[dict[str, Any]] = []
         for _ in range(messages_count):
             msg_id = reader.read_int64()
             seqno = reader.read_int32()
             body_len = reader.read_int32()
-            if body_len < 0 or body_len > reader.remaining:
+            if body_len < 0 or body_len % 4 != 0 or body_len > reader.remaining:
                 raise TlCodecError("msg_container message body length is invalid")
             body = reader._read(body_len)
             constructor_name, fields = decode_tl_object(body)

@@ -26,6 +26,12 @@ DH_PRIME_BYTES = DH_PRIME.to_bytes(256, "big")
 
 # Generator g=3 is valid for this prime (Telegram uses g in {2,3,4,5,6,7}).
 DH_G = 3
+_DH_PUBLIC_LOWER_BOUND = 1 << (2048 - 64)
+
+
+def is_dh_public_value_safe(value: int) -> bool:
+    """Return whether g_a/g_b is in Telegram's recommended safe range."""
+    return _DH_PUBLIC_LOWER_BOUND <= value <= DH_PRIME - _DH_PUBLIC_LOWER_BOUND
 
 
 def generate_dh_pair() -> tuple[int, int]:
@@ -33,9 +39,11 @@ def generate_dh_pair() -> tuple[int, int]:
 
     Returns (a, g_a) where g_a = pow(g, a, p).
     """
-    a = secrets.randbelow(DH_PRIME - 2) + 2
-    g_a = pow(DH_G, a, DH_PRIME)
-    return a, g_a
+    while True:
+        a = secrets.randbelow(DH_PRIME - 2) + 2
+        g_a = pow(DH_G, a, DH_PRIME)
+        if is_dh_public_value_safe(g_a):
+            return a, g_a
 
 
 def compute_auth_key(g_b: int, a: int) -> bytes:
@@ -43,7 +51,7 @@ def compute_auth_key(g_b: int, a: int) -> bytes:
 
     Returns auth_key as 256 bytes (big-endian).
     """
-    if g_b <= 1 or g_b >= DH_PRIME - 1:
+    if not is_dh_public_value_safe(g_b):
         raise ValueError("g_b out of safe range")
     shared = pow(g_b, a, DH_PRIME)
     return shared.to_bytes(256, "big")

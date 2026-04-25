@@ -9,6 +9,7 @@ from ntgram.gateway.mtproto.service_semantics import (
     wrap_rpc_error,
     wrap_rpc_result,
 )
+from ntgram.tl.codec import encode_tl_object
 from ntgram.tl.models import TlRequest
 
 
@@ -30,6 +31,25 @@ def test_ping_pong_control_message() -> None:
     assert response.result["ping_id"] == 55
 
 
+def test_ping_delay_disconnect_returns_pong_ignores_delay() -> None:
+    ctx = ServiceContext()
+    response = handle_control_message(
+        ctx,
+        TlRequest(
+            constructor_id=0,
+            constructor="ping_delay_disconnect",
+            req_msg_id=11,
+            auth_key_id=1,
+            session_id=1,
+            payload={"ping_id": 99, "disconnect_delay": 60},
+        ),
+    )
+    assert response is not None
+    assert response.result["constructor"] == "pong"
+    assert response.result["ping_id"] == 99
+    assert response.result["msg_id"] == 11
+
+
 def test_msg_container_decode() -> None:
     request = TlRequest(
         constructor_id=0,
@@ -49,7 +69,7 @@ def test_msg_container_decode() -> None:
 
 
 def test_gzip_packed_decode() -> None:
-    packed = gzip.compress(b"inner")
+    packed = gzip.compress(encode_tl_object("help.getConfig", {}))
     request = TlRequest(
         constructor_id=0,
         constructor="gzip_packed",
@@ -57,12 +77,12 @@ def test_gzip_packed_decode() -> None:
         auth_key_id=1,
         session_id=1,
         payload={
-            "packed_data": packed.hex(),
-            "inner_request": {"constructor": "messages.getDialogs", "constructor_id": 456, "payload": {"limit": 20}},
+            "packed_data": packed,
         },
     )
     decoded = decode_service_request(request)
-    assert decoded[0].constructor == "messages.getDialogs"
+    assert decoded[0].constructor == "help.getConfig"
+    assert decoded[0].req_msg_id == 1
 
 
 def test_invoke_with_layer_decode() -> None:
@@ -191,7 +211,7 @@ def test_rpc_wrappers() -> None:
     assert err.result["result"]["constructor"] == "rpc_error"
 
 
-def test_bind_temp_auth_key_returns_bool_true() -> None:
+def test_bind_temp_auth_key_is_not_generic_control_message() -> None:
     ctx = ServiceContext()
     response = handle_control_message(
         ctx,
@@ -204,6 +224,4 @@ def test_bind_temp_auth_key_returns_bool_true() -> None:
             payload={},
         ),
     )
-    assert response is not None
-    assert response.result["constructor"] == "rpc_result"
-    assert response.result["result"]["constructor"] == "boolTrue"
+    assert response is None

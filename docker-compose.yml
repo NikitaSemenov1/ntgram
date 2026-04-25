@@ -57,6 +57,7 @@ services:
     environment:
       NTGRAM_GATEWAY_HOST: "0.0.0.0"
       NTGRAM_GATEWAY_PORT: "8080"
+      NTGRAM_GATEWAY_LOG_PATH: /app/.cursor/gateway.log
       NTGRAM_REDIS_DSN: redis://redis:6379/0
       NTGRAM_RSA_PRIVATE_KEY_PATH: /app/keys/private.pem
       NTGRAM_RSA_PUBLIC_KEY_PATH: /app/keys/public.pem
@@ -66,6 +67,8 @@ services:
       NTGRAM_PROFILE_ADDR: services:50054
       NTGRAM_STATUS_ADDR: services:50055
       NTGRAM_UPDATES_ADDR: services:50056
+    volumes:
+      - ./.cursor:/app/.cursor
     ports:
       - "8080:8080"
 

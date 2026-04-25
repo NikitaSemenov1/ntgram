@@ -145,10 +145,15 @@ def default_schema_registry() -> TlSchemaRegistry:
         candidates.append(Path(env_path))
 
     module_path = Path(__file__).resolve()
+    # Canonical runtime schemas: ntgram/tl (sibling of src/ in the ntgram repo).
+    repo_tl = module_path.parents[3] / "tl"
     candidates.extend(
         [
+            repo_tl,
             module_path.parents[3] / "docs" / "knowledge" / "mtproto",
+            Path.cwd() / "tl",
             Path.cwd() / "docs" / "knowledge" / "mtproto",
+            Path("/app/tl"),
             Path("/app/docs/knowledge/mtproto"),
         ],
     )

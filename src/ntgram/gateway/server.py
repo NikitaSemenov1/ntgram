@@ -15,6 +15,7 @@ from ntgram.gateway.mtproto.encrypted_layer import (
     encode_encrypted_message,
 )
 from ntgram.gateway.mtproto.rsa_keys import load_rsa_keypair
+from ntgram.gateway.mtproto.redis_session_repository import RedisAuthSessionRepository
 from ntgram.gateway.mtproto.service_semantics import (
     ServiceSemanticsError,
     decode_service_request,
@@ -40,7 +41,7 @@ from ntgram.gateway.transport.obfuscation import (
     parse_obfuscation_init,
 )
 from ntgram.gateway.update_bus import UpdateBus
-from ntgram.settings import GatewaySettings, ServiceSettings
+from ntgram.settings import GatewaySettings, RedisSettings, ServiceSettings
 from ntgram.tl.codec import (
     TlCodecError,
     decode_tl_request,
@@ -63,8 +64,13 @@ class GatewayServer:
         self,
         gateway_settings: GatewaySettings,
         service_settings: ServiceSettings,
+        redis_settings: RedisSettings | None = None,
     ) -> None:
         self._gateway_settings = gateway_settings
+        redis_repository = RedisAuthSessionRepository(
+            (redis_settings or RedisSettings()).dsn,
+        )
+        redis_repository.ping()
         self._grpc_bridge = GrpcBridge(
             account_addr=service_settings.account_addr,
             chat_addr=service_settings.chat_addr,
@@ -73,7 +79,7 @@ class GatewayServer:
             status_addr=service_settings.status_addr,
             updates_addr=service_settings.updates_addr,
         )
-        self._sessions = SessionStore()
+        self._sessions = SessionStore(redis_repository)
         self._push_registry = PushRegistry()
         self._update_bus = UpdateBus(self._push_registry)
         rsa_keypair = load_rsa_keypair(
@@ -84,7 +90,10 @@ class GatewayServer:
             self._sessions, rsa_keypair,
         )
         self._router = GatewayRouter(
-            self._grpc_bridge, self._sessions, self._update_bus,
+            self._grpc_bridge,
+            self._sessions,
+            self._update_bus,
+            help_get_config_path=gateway_settings.help_get_config_path or None,
         )
 
     @staticmethod
@@ -95,9 +104,61 @@ class GatewayServer:
 
     @staticmethod
     def _make_encrypted_server_msg_id() -> int:
-        """Generate msg_id compatible with encrypted_layer validation."""
+        """Generate a server response msg_id (server msg_id mod 4 == 1)."""
         value = (int(time.time()) << 32) | secrets.randbits(30)
-        return value - (value % 4)
+        return value - (value % 4) + 1
+
+    @staticmethod
+    def _make_server_push_msg_id() -> int:
+        """Generate a server-initiated msg_id (server msg_id mod 4 == 3)."""
+        value = (int(time.time()) << 32) | secrets.randbits(30)
+        return value - (value % 4) + 3
+
+    @staticmethod
+    def _is_non_content_constructor(constructor: str) -> bool:
+        return constructor in {
+            "msgs_ack",
+            "msg_container",
+            "msg_copy",
+            "gzip_packed",
+            "ping",
+            "ping_delay_disconnect",
+            "http_wait",
+            "msgs_state_req",
+            "msg_resend_req",
+            "destroy_session",
+        }
+
+    @classmethod
+    def _validate_inbound_seq_no(
+        cls,
+        session,
+        request: TlRequest,
+        *,
+        top_level: bool,
+    ) -> None:
+        seq_no = request.seq_no or 0
+        if top_level and request.constructor == "msg_container":
+            if seq_no & 1:
+                raise EncryptedLayerError(
+                    "msg_container must be non-content",
+                    error_code=34,
+                    bad_msg_id=request.message_id or request.req_msg_id,
+                    bad_msg_seqno=seq_no,
+                )
+            return
+        error_code = session.validate_inbound_seq_no(
+            request.session_id,
+            seq_no,
+            content_related=not cls._is_non_content_constructor(request.constructor),
+        )
+        if error_code is not None:
+            raise EncryptedLayerError(
+                "bad msg_seqno",
+                error_code=error_code,
+                bad_msg_id=request.message_id or request.req_msg_id,
+                bad_msg_seqno=seq_no,
+            )
 
     @staticmethod
     def _extract_ack_ids(payload: dict) -> list[int]:
@@ -235,12 +296,12 @@ class GatewayServer:
         )
         encoded = encode_tl_response(response)
         if push_slot.session is not None:
-            server_msg_id = self._make_encrypted_server_msg_id()
+            server_msg_id = self._make_server_push_msg_id()
             encoded = encode_encrypted_message(
                 session=push_slot.session,
                 session_id=push_slot.session_id,
                 msg_id=server_msg_id,
-                seq_no=1,
+                seq_no=push_slot.session.next_server_seq_no(push_slot.session_id, content_related=True),
                 message_data=encoded,
                 direction="server",
             )
@@ -285,12 +346,6 @@ class GatewayServer:
                 if frame is None:
                     continue
 
-                if frame.quick_ack_requested:
-                    token = compute_quick_ack_token(frame.payload)
-                    await write_abridged_quick_ack(
-                        writer, token, encrypt=transport_encrypt,
-                    )
-
                 encrypted_inbound = False
                 inbound_msg_id = 0
                 inbound_seq_no = 0
@@ -301,25 +356,37 @@ class GatewayServer:
                     )
                     session = self._sessions.get_session(maybe_auth_key_id)
                     if maybe_auth_key_id != 0 and session is not None:
-                        _, inbound_msg_id, inbound_seq_no, inner_message = (
+                        inbound_session_id, inbound_msg_id, inbound_seq_no, inner_message = (
                             decode_encrypted_message(session, frame.payload)
                         )
+                        if frame.quick_ack_requested:
+                            token = compute_quick_ack_token(
+                                frame.payload,
+                                auth_key=session.auth_key,
+                                x=0,
+                            )
+                            await write_abridged_quick_ack(
+                                writer, token, encrypt=transport_encrypt,
+                            )
                         try:
-                            request = decode_tl_request(inner_message)
+                            inner_request = decode_tl_request(inner_message)
                         except Exception as err:
                             raise TlCodecError(
                                 f"decode encrypted inner TL failed: {err}"
                             ) from err
                         encrypted_inbound = True
+                        # Raw TL from the encrypted layer has no unencrypted header; decode_tl_request
+                        # leaves req_msg_id=0. MTProto correlates rpc_result with the encrypted message msg_id.
+                        bound_req_msg_id = inbound_msg_id
                         request = TlRequest(
-                            constructor_id=request.constructor_id,
-                            constructor=request.constructor,
-                            req_msg_id=request.req_msg_id,
-                            auth_key_id=request.auth_key_id,
-                            session_id=request.session_id,
+                            constructor_id=inner_request.constructor_id,
+                            constructor=inner_request.constructor,
+                            req_msg_id=bound_req_msg_id,
+                            auth_key_id=inner_request.auth_key_id,
+                            session_id=inbound_session_id,
                             message_id=inbound_msg_id,
                             seq_no=inbound_seq_no,
-                            payload=request.payload,
+                            payload=inner_request.payload,
                         )
                     else:
                         try:
@@ -340,7 +407,6 @@ class GatewayServer:
                     and maybe_auth_key_id != 0
                     and request.auth_key_id == 0
                 ):
-                    # Client may omit auth_key_id in inner TL envelope.
                     request = TlRequest(
                         constructor_id=request.constructor_id,
                         constructor=request.constructor,
@@ -356,21 +422,37 @@ class GatewayServer:
                 current_session_id = request.session_id
 
                 logger.info(
-                    "inbound message: peer=%s constructor=%s req_msg_id=%s auth_key_id=%s session_id=%s encrypted=%s",
+                    "inbound message: peer=%s constructor=%s req_msg_id=%s msg_id=%s seq_no=%s auth_key_id=%s session_id=%s encrypted=%s",
                     peer,
                     request.constructor,
                     request.req_msg_id,
+                    request.message_id,
+                    request.seq_no,
                     request.auth_key_id,
                     request.session_id,
                     encrypted_inbound,
                 )
                 self._log_msg_container(peer, request)
 
+                if encrypted_inbound and request.auth_key_id != 0:
+                    seq_session = self._sessions.get_session(request.auth_key_id)
+                    if seq_session is not None:
+                        try:
+                            self._validate_inbound_seq_no(
+                                seq_session,
+                                request,
+                                top_level=True,
+                            )
+                        except EncryptedLayerError as err:
+                            logger.warning("encrypted seqno error: %s", err)
+                            await self._handle_encrypted_error(
+                                err, request.auth_key_id, writer, transport_encrypt,
+                            )
+                            continue
+
                 if request.auth_key_id == 0 and request.constructor in {
                     "req_pq_multi", "req_DH_params", "set_client_DH_params",
                 }:
-                    # Unencrypted auth flow has no session_id in wire format.
-                    # Keep handshake state isolated per TCP connection.
                     request = TlRequest(
                         constructor_id=request.constructor_id,
                         constructor=request.constructor,
@@ -498,15 +580,54 @@ class GatewayServer:
                         request.constructor,
                         err,
                     )
+                    if encrypted_inbound and request.auth_key_id != 0:
+                        await self._handle_encrypted_error(
+                            EncryptedLayerError(
+                                "invalid container/service message",
+                                error_code=64,
+                                bad_msg_id=request.message_id or request.req_msg_id,
+                                bad_msg_seqno=request.seq_no or 0,
+                            ),
+                            request.auth_key_id,
+                            writer,
+                            transport_encrypt,
+                        )
                     continue
                 if request.auth_key_id != 0:
                     for service_request in service_requests:
                         if service_request.invoke_layer is not None:
+                            layer_val = service_request.invoke_layer
                             self._sessions.update_layer(
                                 request.auth_key_id,
-                                service_request.invoke_layer,
+                                layer_val,
+                            )
+                            logger.info(
+                                "mtproto layer persisted: peer=%s auth_key_id=%s session_id=%s layer=%s",
+                                peer,
+                                request.auth_key_id,
+                                service_request.session_id,
+                                layer_val,
                             )
                             break
+                    if request.constructor == "msg_container":
+                        seq_session = self._sessions.get_session(request.auth_key_id)
+                        if seq_session is not None:
+                            try:
+                                for service_request in service_requests:
+                                    self._validate_inbound_seq_no(
+                                        seq_session,
+                                        service_request,
+                                        top_level=False,
+                                    )
+                            except EncryptedLayerError as err:
+                                logger.warning("container seqno error: %s", err)
+                                await self._handle_encrypted_error(
+                                    err,
+                                    request.auth_key_id,
+                                    writer,
+                                    transport_encrypt,
+                                )
+                                continue
                 
                 responses_to_send: list[tuple[TlRequest, TlResponse]] = []
                 for service_request in service_requests:
@@ -573,7 +694,7 @@ class GatewayServer:
                                 session=session,
                                 session_id=response_request.session_id,
                                 msg_id=server_msg_id,
-                                seq_no=(response_request.seq_no or request.seq_no or 0) + 1,
+                                seq_no=session.next_server_seq_no(response_request.session_id, content_related=True),
                                 message_data=encoded,
                                 direction="server",
                             )
@@ -717,21 +838,35 @@ class GatewayServer:
         writer: asyncio.StreamWriter,
         encrypt=None,
     ) -> None:
-        if "bad_server_salt" not in str(err).lower():
+        if err.error_code is None:
             return
         if maybe_auth_key_id == 0:
             return
         session_for_salt = self._sessions.get_session(maybe_auth_key_id)
         if session_for_salt is None:
             return
+        if err.error_code == 48:
+            result = {
+                "constructor": "bad_server_salt",
+                "bad_msg_id": err.bad_msg_id,
+                "bad_msg_seqno": err.bad_msg_seqno,
+                "error_code": 48,
+                "new_server_salt": err.new_server_salt
+                if err.new_server_salt is not None
+                else session_for_salt.server_salt,
+            }
+        else:
+            result = {
+                "constructor": "bad_msg_notification",
+                "bad_msg_id": err.bad_msg_id,
+                "bad_msg_seqno": err.bad_msg_seqno,
+                "error_code": err.error_code,
+            }
         response = TlResponse(
             req_msg_id=0,
-            result={
-                "constructor": "bad_server_salt",
-                "new_server_salt": session_for_salt.server_salt,
-            },
-            error_code=48,
-            error_message="BAD_SERVER_SALT",
+            result=result,
+            error_code=err.error_code,
+            error_message=str(err),
         )
         self._log_outbound_response(
             writer.get_extra_info("peername"),
@@ -745,11 +880,16 @@ class GatewayServer:
         )
         encoded = encode_tl_response(response)
         server_msg_id = self._make_encrypted_server_msg_id()
+        reply_session_id = (
+            err.context_session_id
+            if err.context_session_id is not None
+            else session_for_salt.session_id
+        )
         encoded = encode_encrypted_message(
             session_for_salt,
-            session_for_salt.session_id,
+            reply_session_id,
             server_msg_id,
-            1,
+            session_for_salt.next_server_seq_no(reply_session_id, content_related=False),
             encoded,
             direction="server",
         )
