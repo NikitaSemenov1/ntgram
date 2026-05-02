@@ -16,16 +16,21 @@ class PushSlot:
     session_id: int
     queue: asyncio.Queue[dict] = field(default_factory=asyncio.Queue)
     session: AuthSession | None = None
+    # Subscriber task created by _ensure_push_slot 
+    # cancelled on disconnect
+    task: asyncio.Task | None = None
 
 
 class PushRegistry:
-    """Maps user_id -> set of active PushSlots (one per TCP connection)."""
+    """Maps user_id -> list of active `PushSlot` (one per TCP connection)."""
 
     def __init__(self) -> None:
-        self._by_user: dict[int, set[PushSlot]] = {}
+        self._by_user: dict[int, list[PushSlot]] = {}
 
     def register(self, slot: PushSlot) -> None:
-        self._by_user.setdefault(slot.user_id, set()).add(slot)
+        slots = self._by_user.setdefault(slot.user_id, [])
+        if slot not in slots:
+            slots.append(slot)
         logger.debug(
             "push slot registered: user=%d auth_key=%d",
             slot.user_id, slot.auth_key_id,
@@ -34,7 +39,10 @@ class PushRegistry:
     def unregister(self, slot: PushSlot) -> None:
         slots = self._by_user.get(slot.user_id)
         if slots is not None:
-            slots.discard(slot)
+            try:
+                slots.remove(slot)
+            except ValueError:
+                pass
             if not slots:
                 del self._by_user[slot.user_id]
         logger.debug(
@@ -42,28 +50,6 @@ class PushRegistry:
             slot.user_id, slot.auth_key_id,
         )
 
-    def get_slots(self, user_id: int) -> set[PushSlot]:
-        return self._by_user.get(user_id, set())
-
-    async def push_to_user(
-        self, user_id: int, update: dict,
-        *, exclude_auth_key_id: int = 0,
-    ) -> int:
-        """Push update to all connections of a user.
-
-        Returns count of slots notified.
-        """
-        slots = self._by_user.get(user_id, set())
-        count = 0
-        for slot in slots:
-            if slot.auth_key_id == exclude_auth_key_id:
-                continue
-            try:
-                slot.queue.put_nowait(update)
-                count += 1
-            except asyncio.QueueFull:
-                logger.warning(
-                    "push queue full for user=%d auth_key=%d, dropping",
-                    user_id, slot.auth_key_id,
-                )
-        return count
+    def get_connections(self, user_id: int) -> list[PushSlot]:
+        """Return all active slots for a user (may be empty)."""
+        return list(self._by_user.get(user_id, ()))

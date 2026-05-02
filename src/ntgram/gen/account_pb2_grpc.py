@@ -39,6 +39,11 @@ class AccountServiceStub(object):
                 request_serializer=account__pb2.SendCodeRequest.SerializeToString,
                 response_deserializer=account__pb2.SendCodeResponse.FromString,
                 _registered_method=True)
+        self.CancelCode = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/CancelCode',
+                request_serializer=account__pb2.CancelCodeRequest.SerializeToString,
+                response_deserializer=account__pb2.CancelCodeResponse.FromString,
+                _registered_method=True)
         self.SignIn = channel.unary_unary(
                 '/ntgram.account.v1.AccountService/SignIn',
                 request_serializer=account__pb2.SignInRequest.SerializeToString,
@@ -59,12 +64,78 @@ class AccountServiceStub(object):
                 request_serializer=account__pb2.GetUserRequest.SerializeToString,
                 response_deserializer=account__pb2.GetUserResponse.FromString,
                 _registered_method=True)
+        self.CheckUsername = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/CheckUsername',
+                request_serializer=account__pb2.CheckUsernameRequest.SerializeToString,
+                response_deserializer=account__pb2.CheckUsernameResponse.FromString,
+                _registered_method=True)
+        self.UpdateUsername = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/UpdateUsername',
+                request_serializer=account__pb2.UpdateUsernameRequest.SerializeToString,
+                response_deserializer=account__pb2.UpdateUsernameResponse.FromString,
+                _registered_method=True)
+        self.ResolveUsername = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/ResolveUsername',
+                request_serializer=account__pb2.ResolveUsernameRequest.SerializeToString,
+                response_deserializer=account__pb2.ResolveUsernameResponse.FromString,
+                _registered_method=True)
+        self.SearchUsernames = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/SearchUsernames',
+                request_serializer=account__pb2.SearchUsernamesRequest.SerializeToString,
+                response_deserializer=account__pb2.SearchUsernamesResponse.FromString,
+                _registered_method=True)
+        self.GetProfile = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/GetProfile',
+                request_serializer=account__pb2.GetProfileRequest.SerializeToString,
+                response_deserializer=account__pb2.GetProfileResponse.FromString,
+                _registered_method=True)
+        self.GetProfiles = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/GetProfiles',
+                request_serializer=account__pb2.GetProfilesRequest.SerializeToString,
+                response_deserializer=account__pb2.GetProfilesResponse.FromString,
+                _registered_method=True)
+        self.GetFullUser = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/GetFullUser',
+                request_serializer=account__pb2.GetFullUserRequest.SerializeToString,
+                response_deserializer=account__pb2.GetFullUserResponse.FromString,
+                _registered_method=True)
+        self.UpdateProfile = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/UpdateProfile',
+                request_serializer=account__pb2.UpdateProfileRequest.SerializeToString,
+                response_deserializer=account__pb2.UpdateProfileResponse.FromString,
+                _registered_method=True)
+        self.GetPrivacy = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/GetPrivacy',
+                request_serializer=account__pb2.GetPrivacyRequest.SerializeToString,
+                response_deserializer=account__pb2.GetPrivacyResponse.FromString,
+                _registered_method=True)
+        self.GetPassword = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/GetPassword',
+                request_serializer=account__pb2.GetPasswordRequest.SerializeToString,
+                response_deserializer=account__pb2.GetPasswordResponse.FromString,
+                _registered_method=True)
+        self.GetContentSettings = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/GetContentSettings',
+                request_serializer=account__pb2.GetContentSettingsRequest.SerializeToString,
+                response_deserializer=account__pb2.GetContentSettingsResponse.FromString,
+                _registered_method=True)
+        self.GetConfig = channel.unary_unary(
+                '/ntgram.account.v1.AccountService/GetConfig',
+                request_serializer=account__pb2.GetConfigRequest.SerializeToString,
+                response_deserializer=account__pb2.GetConfigResponse.FromString,
+                _registered_method=True)
 
 
 class AccountServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def SendCode(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CancelCode(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -94,6 +165,81 @@ class AccountServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CheckUsername(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateUsername(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResolveUsername(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SearchUsernames(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetProfile(self, request, context):
+        """Profile RPCs (merged from profile service).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetProfiles(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetFullUser(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateProfile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPrivacy(self, request, context):
+        """Policy RPCs (moved from gateway static stubs).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPassword(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetContentSettings(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetConfig(self, request, context):
+        """Deployment config (moved from gateway HelpConfigProvider).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AccountServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -101,6 +247,11 @@ def add_AccountServiceServicer_to_server(servicer, server):
                     servicer.SendCode,
                     request_deserializer=account__pb2.SendCodeRequest.FromString,
                     response_serializer=account__pb2.SendCodeResponse.SerializeToString,
+            ),
+            'CancelCode': grpc.unary_unary_rpc_method_handler(
+                    servicer.CancelCode,
+                    request_deserializer=account__pb2.CancelCodeRequest.FromString,
+                    response_serializer=account__pb2.CancelCodeResponse.SerializeToString,
             ),
             'SignIn': grpc.unary_unary_rpc_method_handler(
                     servicer.SignIn,
@@ -121,6 +272,66 @@ def add_AccountServiceServicer_to_server(servicer, server):
                     servicer.GetUser,
                     request_deserializer=account__pb2.GetUserRequest.FromString,
                     response_serializer=account__pb2.GetUserResponse.SerializeToString,
+            ),
+            'CheckUsername': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckUsername,
+                    request_deserializer=account__pb2.CheckUsernameRequest.FromString,
+                    response_serializer=account__pb2.CheckUsernameResponse.SerializeToString,
+            ),
+            'UpdateUsername': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateUsername,
+                    request_deserializer=account__pb2.UpdateUsernameRequest.FromString,
+                    response_serializer=account__pb2.UpdateUsernameResponse.SerializeToString,
+            ),
+            'ResolveUsername': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveUsername,
+                    request_deserializer=account__pb2.ResolveUsernameRequest.FromString,
+                    response_serializer=account__pb2.ResolveUsernameResponse.SerializeToString,
+            ),
+            'SearchUsernames': grpc.unary_unary_rpc_method_handler(
+                    servicer.SearchUsernames,
+                    request_deserializer=account__pb2.SearchUsernamesRequest.FromString,
+                    response_serializer=account__pb2.SearchUsernamesResponse.SerializeToString,
+            ),
+            'GetProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetProfile,
+                    request_deserializer=account__pb2.GetProfileRequest.FromString,
+                    response_serializer=account__pb2.GetProfileResponse.SerializeToString,
+            ),
+            'GetProfiles': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetProfiles,
+                    request_deserializer=account__pb2.GetProfilesRequest.FromString,
+                    response_serializer=account__pb2.GetProfilesResponse.SerializeToString,
+            ),
+            'GetFullUser': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFullUser,
+                    request_deserializer=account__pb2.GetFullUserRequest.FromString,
+                    response_serializer=account__pb2.GetFullUserResponse.SerializeToString,
+            ),
+            'UpdateProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateProfile,
+                    request_deserializer=account__pb2.UpdateProfileRequest.FromString,
+                    response_serializer=account__pb2.UpdateProfileResponse.SerializeToString,
+            ),
+            'GetPrivacy': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPrivacy,
+                    request_deserializer=account__pb2.GetPrivacyRequest.FromString,
+                    response_serializer=account__pb2.GetPrivacyResponse.SerializeToString,
+            ),
+            'GetPassword': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPassword,
+                    request_deserializer=account__pb2.GetPasswordRequest.FromString,
+                    response_serializer=account__pb2.GetPasswordResponse.SerializeToString,
+            ),
+            'GetContentSettings': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetContentSettings,
+                    request_deserializer=account__pb2.GetContentSettingsRequest.FromString,
+                    response_serializer=account__pb2.GetContentSettingsResponse.SerializeToString,
+            ),
+            'GetConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetConfig,
+                    request_deserializer=account__pb2.GetConfigRequest.FromString,
+                    response_serializer=account__pb2.GetConfigResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -150,6 +361,33 @@ class AccountService(object):
             '/ntgram.account.v1.AccountService/SendCode',
             account__pb2.SendCodeRequest.SerializeToString,
             account__pb2.SendCodeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CancelCode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/CancelCode',
+            account__pb2.CancelCodeRequest.SerializeToString,
+            account__pb2.CancelCodeResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -258,6 +496,330 @@ class AccountService(object):
             '/ntgram.account.v1.AccountService/GetUser',
             account__pb2.GetUserRequest.SerializeToString,
             account__pb2.GetUserResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CheckUsername(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/CheckUsername',
+            account__pb2.CheckUsernameRequest.SerializeToString,
+            account__pb2.CheckUsernameResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateUsername(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/UpdateUsername',
+            account__pb2.UpdateUsernameRequest.SerializeToString,
+            account__pb2.UpdateUsernameResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResolveUsername(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/ResolveUsername',
+            account__pb2.ResolveUsernameRequest.SerializeToString,
+            account__pb2.ResolveUsernameResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SearchUsernames(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/SearchUsernames',
+            account__pb2.SearchUsernamesRequest.SerializeToString,
+            account__pb2.SearchUsernamesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/GetProfile',
+            account__pb2.GetProfileRequest.SerializeToString,
+            account__pb2.GetProfileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetProfiles(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/GetProfiles',
+            account__pb2.GetProfilesRequest.SerializeToString,
+            account__pb2.GetProfilesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetFullUser(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/GetFullUser',
+            account__pb2.GetFullUserRequest.SerializeToString,
+            account__pb2.GetFullUserResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/UpdateProfile',
+            account__pb2.UpdateProfileRequest.SerializeToString,
+            account__pb2.UpdateProfileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPrivacy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/GetPrivacy',
+            account__pb2.GetPrivacyRequest.SerializeToString,
+            account__pb2.GetPrivacyResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPassword(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/GetPassword',
+            account__pb2.GetPasswordRequest.SerializeToString,
+            account__pb2.GetPasswordResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetContentSettings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/GetContentSettings',
+            account__pb2.GetContentSettingsRequest.SerializeToString,
+            account__pb2.GetContentSettingsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.account.v1.AccountService/GetConfig',
+            account__pb2.GetConfigRequest.SerializeToString,
+            account__pb2.GetConfigResponse.FromString,
             options,
             channel_credentials,
             insecure,

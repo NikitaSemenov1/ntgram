@@ -7,11 +7,9 @@ import secrets
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from ntgram.gateway.mtproto.aes import aes_ige_encrypt
 from ntgram.gateway.mtproto.auth_handshake import AuthHandshakeProcessor
 from ntgram.gateway.mtproto.dh_params import DH_PRIME
-from ntgram.gateway.mtproto.encrypted_layer import (
-    _aes_ige_encrypt_blockwise,
-)
 from ntgram.gateway.mtproto.rsa_keys import load_rsa_keypair
 from ntgram.gateway.mtproto.rsa_pad import rsa_pad_encrypt
 from ntgram.gateway.mtproto.session_store import SessionStore
@@ -83,14 +81,11 @@ def test_full_dh_handshake(tmp_path) -> None:
     assert rsa_keys.fingerprint in fingerprints
 
     pq = int.from_bytes(pq_bytes, "big")
-    # Simple factorization for small pq
-    p = 0
-    for i in range(2, int(pq ** 0.5) + 1):
-        if pq % i == 0:
-            p = i
-            break
-    assert p > 0
-    q = pq // p
+    # Avoid O(sqrt(pq)) trial division on ~62-bit semiprimes: the processor
+    # already generated the exact factors used for this handshake instance.
+    p = processor._p
+    q = processor._q
+    assert p * q == pq
     if p > q:
         p, q = q, p
 
@@ -173,7 +168,7 @@ def test_full_dh_handshake(tmp_path) -> None:
         data_with_hash += os.urandom(pad_len)
 
     tmp_key, tmp_iv = compute_tmp_aes_key_iv(server_nonce, new_nonce)
-    client_encrypted = _aes_ige_encrypt_blockwise(data_with_hash, tmp_key, tmp_iv)
+    client_encrypted = aes_ige_encrypt(data_with_hash, tmp_key, tmp_iv)
 
     # ---- Step 5: set_client_DH_params ----
     set_dh = TlRequest(

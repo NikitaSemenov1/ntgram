@@ -4,16 +4,58 @@ import struct
 from typing import Any
 
 from ntgram.tl.models import TlRequest, TlResponse
-from ntgram.tl.registry import default_schema_registry
+from ntgram.tl.registry import MethodSpec, default_schema_registry
 from ntgram.tl.serializer import (
     TlSerializerError,
     _Reader,
+    _serialize_value,
     deserialize_by_spec,
     serialize_object,
 )
 
+Reader = _Reader
+serialize_value = _serialize_value
+
 _SCHEMA = default_schema_registry()
 _MSG_CONTAINER_CID = _SCHEMA.constructors_by_name["msg_container"].id
+_MAX_CONTAINER_MESSAGES = 1024
+_LANGPACK_GET_LANGUAGES_LEGACY_CID = -0x7FF02A83
+_ACCOUNT_REGISTER_DEVICE_LEGACY_CID = 0x637EA878
+
+# messages.createChat legacy constructor: same format
+_MESSAGES_CREATE_CHAT_LEGACY_CID = 0x0034A818
+
+# updates.getDifference before the pts_limit flag was added.
+# Wire format: flags:# pts:int pts_total_limit:flags.0?int date:int qts:int
+_UPDATES_GET_DIFFERENCE_LEGACY_CID = 0x25939651
+_UPDATES_GET_DIFFERENCE_LEGACY_SPEC = MethodSpec(
+    method="updates.getDifference",
+    id=_UPDATES_GET_DIFFERENCE_LEGACY_CID,
+    params=(
+        ("flags", "#"),
+        ("pts", "int"),
+        ("pts_total_limit", "flags.0?int"),
+        ("date", "int"),
+        ("qts", "int"),
+    ),
+    result_type="updates.Difference",
+)
+
+# auth.signUp (no flags, no phone_code):
+#   phone_number:string phone_code_hash:string first_name:string last_name:string
+# Constructor 0x80EEE427
+_AUTH_SIGN_UP_LEGACY_CID = -0x7F111BD9  # 0x80EEE427 unsigned
+_AUTH_SIGN_UP_LEGACY_SPEC = MethodSpec(
+    method="auth.signUp",
+    id=_AUTH_SIGN_UP_LEGACY_CID,
+    params=(
+        ("phone_number", "string"),
+        ("phone_code_hash", "string"),
+        ("first_name", "string"),
+        ("last_name", "string"),
+    ),
+    result_type="auth.Authorization",
+)
 
 
 class TlCodecError(ValueError):
@@ -63,12 +105,14 @@ def _deserialize_tl_body(
         messages_count = reader.read_int32()
         if messages_count < 0:
             raise TlCodecError("msg_container.messages count must be non-negative")
+        if messages_count > _MAX_CONTAINER_MESSAGES:
+            raise TlCodecError("msg_container.messages count exceeds 1024")
         messages: list[dict[str, Any]] = []
         for _ in range(messages_count):
             msg_id = reader.read_int64()
             seqno = reader.read_int32()
             body_len = reader.read_int32()
-            if body_len < 0 or body_len > reader.remaining:
+            if body_len < 0 or body_len % 4 != 0 or body_len > reader.remaining:
                 raise TlCodecError("msg_container message body length is invalid")
             body = reader._read(body_len)
             constructor_name, fields = decode_tl_object(body)
@@ -93,6 +137,15 @@ def _deserialize_tl_body(
 
     spec = _SCHEMA.methods_by_id.get(cid)
     if spec is not None:
+        if spec.method == "langpack.getLanguages" and reader.remaining == 0:
+            return TlRequest(
+                constructor_id=cid,
+                constructor=spec.method,
+                req_msg_id=req_msg_id,
+                auth_key_id=auth_key_id,
+                session_id=session_id,
+                payload={},
+            )
         fields = deserialize_by_spec(spec, reader, _SCHEMA)
         return TlRequest(
             constructor_id=cid,
@@ -102,6 +155,69 @@ def _deserialize_tl_body(
             session_id=session_id,
             payload=fields,
         )
+
+    if cid == _LANGPACK_GET_LANGUAGES_LEGACY_CID:
+        return TlRequest(
+            constructor_id=cid,
+            constructor="langpack.getLanguages",
+            req_msg_id=req_msg_id,
+            auth_key_id=auth_key_id,
+            session_id=session_id,
+            payload={},
+        )
+    if cid == _ACCOUNT_REGISTER_DEVICE_LEGACY_CID:
+        return TlRequest(
+            constructor_id=cid,
+            constructor="account.registerDevice",
+            req_msg_id=req_msg_id,
+            auth_key_id=auth_key_id,
+            session_id=session_id,
+            payload={
+                "token_type": reader.read_int32(),
+                "token": reader.read_string(),
+            },
+        )
+
+    if cid == _UPDATES_GET_DIFFERENCE_LEGACY_CID:
+        fields = deserialize_by_spec(_UPDATES_GET_DIFFERENCE_LEGACY_SPEC, reader, _SCHEMA)
+        return TlRequest(
+            constructor_id=cid,
+            constructor="updates.getDifference",
+            req_msg_id=req_msg_id,
+            auth_key_id=auth_key_id,
+            session_id=session_id,
+            payload=fields,
+        )
+
+    if cid == _AUTH_SIGN_UP_LEGACY_CID:
+        # Legacy auth.signUp: no flags, no phone_code field.
+        # The handler for "auth.signUp" already handles missing fields gracefully
+        # by treating phone_code as optional ("").
+        fields = deserialize_by_spec(_AUTH_SIGN_UP_LEGACY_SPEC, reader, _SCHEMA)
+        return TlRequest(
+            constructor_id=cid,
+            constructor="auth.signUp",
+            req_msg_id=req_msg_id,
+            auth_key_id=auth_key_id,
+            session_id=session_id,
+            payload=fields,
+        )
+
+    if cid == _MESSAGES_CREATE_CHAT_LEGACY_CID:
+        # Legacy messages.createChat: Identical wire format to the
+        # current 0x92CEDDD4 — just a renumbered constructor ID after a schema
+        # update. Reuse the canonical method spec so the handler is transparent.
+        spec = _SCHEMA.methods_by_name.get("messages.createChat")
+        if spec is not None:
+            fields = deserialize_by_spec(spec, reader, _SCHEMA)
+            return TlRequest(
+                constructor_id=cid,
+                constructor="messages.createChat",
+                req_msg_id=req_msg_id,
+                auth_key_id=auth_key_id,
+                session_id=session_id,
+                payload=fields,
+            )
 
     cspec = _SCHEMA.constructors_by_id.get(cid)
     if cspec is not None:
@@ -173,6 +289,17 @@ def decode_tl_object(data: bytes) -> tuple[str, dict[str, Any]]:
     reader = _Reader(data)
 
     cid = reader.read_int32()
+    if cid == _LANGPACK_GET_LANGUAGES_LEGACY_CID:
+        return "langpack.getLanguages", {}
+    if cid == _ACCOUNT_REGISTER_DEVICE_LEGACY_CID:
+        return "account.registerDevice", {
+            "token_type": reader.read_int32(),
+            "token": reader.read_string(),
+        }
+    if cid == _UPDATES_GET_DIFFERENCE_LEGACY_CID:
+        fields = deserialize_by_spec(_UPDATES_GET_DIFFERENCE_LEGACY_SPEC, reader, _SCHEMA)
+        return "updates.getDifference", fields
+
     spec = _SCHEMA.constructors_by_id.get(cid)
     if spec is not None:
         fields = deserialize_by_spec(spec, reader, _SCHEMA)

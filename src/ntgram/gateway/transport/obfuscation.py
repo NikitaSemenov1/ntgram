@@ -26,14 +26,6 @@ class ObfuscationSession:
 
 
 class ObfuscationProtocolError(RuntimeError):
-<<<<<<< HEAD
-    """Obfuscation protocol error."""
-
-
-def parse_obfuscation_init(init_payload: bytes) -> None:
-    del init_payload
-    raise ObfuscationProtocolError("Obfuscation protocol is not supported")
-=======
     """Raised when MTProto transport obfuscation payload is invalid."""
 
 
@@ -56,10 +48,7 @@ def _validate_wire_init(init_payload: bytes) -> None:
 
 
 def parse_obfuscation_init(init_payload: bytes) -> ObfuscationSession:
-    """Parse MTProto transport obfuscation init payload.
-
-    Returns stateful callables to encrypt/decrypt subsequent transport bytes.
-    """
+    """Parse MTProto transport obfuscation init payload."""
     if len(init_payload) != INIT_PAYLOAD_LEN:
         raise ObfuscationProtocolError(
             f"invalid obfuscation init length: {len(init_payload)}",
@@ -88,4 +77,3 @@ def parse_obfuscation_init(init_payload: bytes) -> ObfuscationSession:
         encrypt=encryptor.update,
         decrypt=decryptor.update,
     )
->>>>>>> dd5dd43 (some fixes)

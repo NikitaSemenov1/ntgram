@@ -44,6 +44,31 @@ class UpdatesServiceStub(object):
                 request_serializer=updates__pb2.GetDifferenceRequest.SerializeToString,
                 response_deserializer=updates__pb2.GetDifferenceResponse.FromString,
                 _registered_method=True)
+        self.Subscribe = channel.unary_stream(
+                '/ntgram.updates.v1.UpdatesService/Subscribe',
+                request_serializer=updates__pb2.SubscribeRequest.SerializeToString,
+                response_deserializer=updates__pb2.UpdateEvent.FromString,
+                _registered_method=True)
+        self.IncrementPts = channel.unary_unary(
+                '/ntgram.updates.v1.UpdatesService/IncrementPts',
+                request_serializer=updates__pb2.IncrementPtsRequest.SerializeToString,
+                response_deserializer=updates__pb2.IncrementPtsResponse.FromString,
+                _registered_method=True)
+        self.IncrementPtsBatch = channel.unary_unary(
+                '/ntgram.updates.v1.UpdatesService/IncrementPtsBatch',
+                request_serializer=updates__pb2.IncrementPtsBatchRequest.SerializeToString,
+                response_deserializer=updates__pb2.IncrementPtsBatchResponse.FromString,
+                _registered_method=True)
+        self.RecordPtsUpdate = channel.unary_unary(
+                '/ntgram.updates.v1.UpdatesService/RecordPtsUpdate',
+                request_serializer=updates__pb2.RecordPtsUpdateRequest.SerializeToString,
+                response_deserializer=updates__pb2.RecordPtsUpdateResponse.FromString,
+                _registered_method=True)
+        self.RecordPtsUpdateBatch = channel.unary_unary(
+                '/ntgram.updates.v1.UpdatesService/RecordPtsUpdateBatch',
+                request_serializer=updates__pb2.RecordPtsUpdateBatchRequest.SerializeToString,
+                response_deserializer=updates__pb2.RecordPtsUpdateBatchResponse.FromString,
+                _registered_method=True)
 
 
 class UpdatesServiceServicer(object):
@@ -61,6 +86,40 @@ class UpdatesServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Subscribe(self, request, context):
+        """Server-push: open a long-lived stream; service sends UpdateEvent messages
+        whenever new updates are available for the user.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def IncrementPts(self, request, context):
+        """ChatService writes per-user PTS state through these calls now that the
+        ``update_state`` / ``user_pts_updates`` tables live in updates_db.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def IncrementPtsBatch(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecordPtsUpdate(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecordPtsUpdateBatch(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_UpdatesServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -73,6 +132,31 @@ def add_UpdatesServiceServicer_to_server(servicer, server):
                     servicer.GetDifference,
                     request_deserializer=updates__pb2.GetDifferenceRequest.FromString,
                     response_serializer=updates__pb2.GetDifferenceResponse.SerializeToString,
+            ),
+            'Subscribe': grpc.unary_stream_rpc_method_handler(
+                    servicer.Subscribe,
+                    request_deserializer=updates__pb2.SubscribeRequest.FromString,
+                    response_serializer=updates__pb2.UpdateEvent.SerializeToString,
+            ),
+            'IncrementPts': grpc.unary_unary_rpc_method_handler(
+                    servicer.IncrementPts,
+                    request_deserializer=updates__pb2.IncrementPtsRequest.FromString,
+                    response_serializer=updates__pb2.IncrementPtsResponse.SerializeToString,
+            ),
+            'IncrementPtsBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.IncrementPtsBatch,
+                    request_deserializer=updates__pb2.IncrementPtsBatchRequest.FromString,
+                    response_serializer=updates__pb2.IncrementPtsBatchResponse.SerializeToString,
+            ),
+            'RecordPtsUpdate': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecordPtsUpdate,
+                    request_deserializer=updates__pb2.RecordPtsUpdateRequest.FromString,
+                    response_serializer=updates__pb2.RecordPtsUpdateResponse.SerializeToString,
+            ),
+            'RecordPtsUpdateBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecordPtsUpdateBatch,
+                    request_deserializer=updates__pb2.RecordPtsUpdateBatchRequest.FromString,
+                    response_serializer=updates__pb2.RecordPtsUpdateBatchResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -129,6 +213,141 @@ class UpdatesService(object):
             '/ntgram.updates.v1.UpdatesService/GetDifference',
             updates__pb2.GetDifferenceRequest.SerializeToString,
             updates__pb2.GetDifferenceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Subscribe(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/ntgram.updates.v1.UpdatesService/Subscribe',
+            updates__pb2.SubscribeRequest.SerializeToString,
+            updates__pb2.UpdateEvent.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def IncrementPts(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.updates.v1.UpdatesService/IncrementPts',
+            updates__pb2.IncrementPtsRequest.SerializeToString,
+            updates__pb2.IncrementPtsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def IncrementPtsBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.updates.v1.UpdatesService/IncrementPtsBatch',
+            updates__pb2.IncrementPtsBatchRequest.SerializeToString,
+            updates__pb2.IncrementPtsBatchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecordPtsUpdate(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.updates.v1.UpdatesService/RecordPtsUpdate',
+            updates__pb2.RecordPtsUpdateRequest.SerializeToString,
+            updates__pb2.RecordPtsUpdateResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecordPtsUpdateBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.updates.v1.UpdatesService/RecordPtsUpdateBatch',
+            updates__pb2.RecordPtsUpdateBatchRequest.SerializeToString,
+            updates__pb2.RecordPtsUpdateBatchResponse.FromString,
             options,
             channel_credentials,
             insecure,

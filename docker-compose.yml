@@ -1,17 +1,60 @@
 services:
-  postgres:
+  # ---------------------------------------------------------------------
+  # Per-service Postgres instances. Each domain service owns a physically
+  # separate database engine — no shared cluster, no shared catalog. The
+  # standard Postgres entrypoint creates ``POSTGRES_DB`` automatically on
+  # first boot, then runs every ``*.sql`` it finds under
+  # ``/docker-entrypoint-initdb.d/`` against that database. We therefore
+  # mount only the relevant per-service migrations folder into each.
+  # ---------------------------------------------------------------------
+
+  postgres-account:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ntgram
       POSTGRES_PASSWORD: ntgram
-      POSTGRES_DB: ntgram
+      POSTGRES_DB: account_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
+      - pgdata-account:/var/lib/postgresql/data
+      - ./migrations/account:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ntgram"]
+      test: ["CMD-SHELL", "pg_isready -U ntgram -d account_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  postgres-chat:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ntgram
+      POSTGRES_PASSWORD: ntgram
+      POSTGRES_DB: chat_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata-chat:/var/lib/postgresql/data
+      - ./migrations/chat:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ntgram -d chat_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  postgres-updates:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ntgram
+      POSTGRES_PASSWORD: ntgram
+      POSTGRES_DB: updates_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - pgdata-updates:/var/lib/postgresql/data
+      - ./migrations/updates:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ntgram -d updates_db"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -26,48 +69,102 @@ services:
       timeout: 3s
       retries: 10
 
-  services:
+  # ---------------------------------------------------------------------
+  # Domain services — one container per service, one DB engine per service.
+  # ---------------------------------------------------------------------
+
+  account:
     build:
       context: .
       target: services
+    command: ["python", "-m", "ntgram.main_services", "--service", "account", "--address", "0.0.0.0:50051"]
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
+      postgres-account:
         condition: service_healthy
     environment:
-      NTGRAM_POSTGRES_DSN: postgresql://ntgram:ntgram@postgres:5432/ntgram
-      NTGRAM_REDIS_DSN: redis://redis:6379/0
+      NTGRAM_ACCOUNT_DSN: postgresql://ntgram:ntgram@postgres-account:5432/account_db
+      NTGRAM_SERVICES_LOG_DIR: /app/.data
+    volumes:
+      - ./.data:/app/.data:rw
     ports:
       - "50051:50051"
+
+  updates:
+    build:
+      context: .
+      target: services
+    command: ["python", "-m", "ntgram.main_services", "--service", "updates", "--address", "0.0.0.0:50056"]
+    depends_on:
+      postgres-updates:
+        condition: service_healthy
+    environment:
+      NTGRAM_UPDATES_DSN: postgresql://ntgram:ntgram@postgres-updates:5432/updates_db
+      NTGRAM_SERVICES_LOG_DIR: /app/.data
+    volumes:
+      - ./.data:/app/.data:rw
+    ports:
+      - "50056:50056"
+
+  chat:
+    build:
+      context: .
+      target: services
+    command:
+      - "python"
+      - "-m"
+      - "ntgram.main_services"
+      - "--service"
+      - "chat"
+      - "--address"
+      - "0.0.0.0:50052"
+      - "--account-addr"
+      - "account:50051"
+      - "--updates-addr"
+      - "updates:50056"
+    depends_on:
+      postgres-chat:
+        condition: service_healthy
+      account:
+        condition: service_started
+      updates:
+        condition: service_started
+    environment:
+      NTGRAM_CHAT_DSN: postgresql://ntgram:ntgram@postgres-chat:5432/chat_db
+      NTGRAM_SERVICES_LOG_DIR: /app/.data
+    volumes:
+      - ./.data:/app/.data:rw
+    ports:
       - "50052:50052"
-      - "50053:50053"
-      - "50054:50054"
-      - "50055:50055"
 
   gateway:
     build:
       context: .
       target: gateway
     depends_on:
-      services:
+      account:
+        condition: service_started
+      chat:
+        condition: service_started
+      updates:
         condition: service_started
       redis:
         condition: service_healthy
     environment:
       NTGRAM_GATEWAY_HOST: "0.0.0.0"
       NTGRAM_GATEWAY_PORT: "8080"
+      NTGRAM_GATEWAY_LOG_PATH: /app/.data/gateway.log
       NTGRAM_REDIS_DSN: redis://redis:6379/0
       NTGRAM_RSA_PRIVATE_KEY_PATH: /app/keys/private.pem
       NTGRAM_RSA_PUBLIC_KEY_PATH: /app/keys/public.pem
-      NTGRAM_ACCOUNT_ADDR: services:50051
-      NTGRAM_CHAT_ADDR: services:50052
-      NTGRAM_MESSAGE_ADDR: services:50053
-      NTGRAM_PROFILE_ADDR: services:50054
-      NTGRAM_STATUS_ADDR: services:50055
-      NTGRAM_UPDATES_ADDR: services:50056
+      NTGRAM_ACCOUNT_ADDR: account:50051
+      NTGRAM_CHAT_ADDR: chat:50052
+      NTGRAM_UPDATES_ADDR: updates:50056
+    volumes:
+      - ./.data:/app/.data:rw
     ports:
       - "8080:8080"
 
 volumes:
-  pgdata:
+  pgdata-account:
+  pgdata-chat:
+  pgdata-updates:

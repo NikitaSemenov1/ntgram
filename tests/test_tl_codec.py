@@ -126,6 +126,24 @@ def test_msgs_ack_roundtrip() -> None:
     assert fields["msg_ids"] == ids
 
 
+def test_rpc_drop_answer_roundtrip() -> None:
+    req_msg_id = 123456789012345
+    encoded = encode_tl_object("rpc_drop_answer", {"req_msg_id": req_msg_id})
+
+    request = decode_tl_request(encoded)
+    assert request.constructor == "rpc_drop_answer"
+    assert request.payload == {"req_msg_id": req_msg_id}
+
+    name, fields = decode_tl_object(
+        encode_tl_object(
+            "rpc_answer_dropped",
+            {"msg_id": 99, "seq_no": 3, "bytes": 1024},
+        ),
+    )
+    assert name == "rpc_answer_dropped"
+    assert fields == {"msg_id": 99, "seq_no": 3, "bytes": 1024}
+
+
 def test_dh_gen_ok_roundtrip() -> None:
     """dh_gen_ok: nonce(int128) + server_nonce(int128) + new_nonce_hash1(int128)."""
     nonce = 0x1234567890ABCDEF1234567890ABCDEF
@@ -231,6 +249,44 @@ def test_decode_msg_container_with_single_inner_message() -> None:
     assert messages[0]["constructor"] == "ping"
     assert messages[0]["req_msg_id"] == message_id
     assert messages[0]["payload"]["ping_id"] == 42
+
+
+def test_langpack_get_languages_decode_empty_body() -> None:
+    """Current official clients send ``langpack.getLanguages`` with ctor only (no params)."""
+    spec = _SCHEMA.methods_by_name["langpack.getLanguages"]
+    body = _write_int32(_as_signed_int32(spec.id))
+    request = decode_tl_request(body)
+    assert request.constructor == "langpack.getLanguages"
+    assert request.payload == {}
+
+
+def test_langpack_get_languages_decode_legacy_ctor_only_body() -> None:
+    """Telegram Android still sends legacy ctor-only ``langpack.getLanguages``."""
+    body = _write_int32(-0x7FF02A83)
+    request = decode_tl_request(body)
+    assert request.constructor == "langpack.getLanguages"
+    assert request.payload == {}
+
+
+def test_msg_container_decodes_legacy_langpack_get_languages() -> None:
+    """Legacy Android ``langpack.getLanguages`` may arrive inside ``msg_container``."""
+    inner = _write_int32(-0x7FF02A83)
+    container_spec = _SCHEMA.constructors_by_name["msg_container"]
+    message_id = 0x1122334455667788
+    body = (
+        _write_int32(container_spec.id)
+        + _write_int32(1)
+        + _write_int64(message_id)
+        + _write_int32(1)
+        + _write_int32(len(inner))
+        + inner
+    )
+
+    request = decode_tl_request(body)
+
+    assert request.constructor == "msg_container"
+    assert request.payload["messages"][0]["constructor"] == "langpack.getLanguages"
+    assert request.payload["messages"][0]["payload"] == {}
 
 
 # ---------------------------------------------------------------------------

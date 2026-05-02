@@ -10,7 +10,6 @@ def main() -> int:
     proto_dir = root / "proto"
     out_dir = root / "src" / "ntgram" / "gen"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "__init__.py").write_text("", encoding="utf-8")
 
     cmd = [
         sys.executable,

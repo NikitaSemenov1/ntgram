@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x63ommon.proto\x12\x10ntgram.common.v1\"\x1a\n\x07UserRef\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\")\n\x08RpcError\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\"L\n\x13ServiceResponseMeta\x12\n\n\x02ok\x18\x01 \x01(\x08\x12)\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x1a.ntgram.common.v1.RpcErrorb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0c\x63ommon.proto\x12\x10ntgram.common.v1\"\x1a\n\x07UserRef\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\")\n\x08RpcError\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\",\n\x0b\x45rrorDetail\x12\x0c\n\x04\x63ode\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\"L\n\x13ServiceResponseMeta\x12\n\n\x02ok\x18\x01 \x01(\x08\x12)\n\x05\x65rror\x18\x02 \x01(\x0b\x32\x1a.ntgram.common.v1.RpcError\"Z\n\x0eMinimalProfile\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x12\n\nfirst_name\x18\x02 \x01(\t\x12\x11\n\tlast_name\x18\x03 \x01(\t\x12\x10\n\x08username\x18\x04 \x01(\t\"\x86\x01\n\x0bMinimalChat\x12\x0f\n\x07\x63hat_id\x18\x01 \x01(\x03\x12\r\n\x05title\x18\x02 \x01(\t\x12\x1a\n\x12participants_count\x18\x03 \x01(\x05\x12\x0f\n\x07version\x18\x04 \x01(\x05\x12\x11\n\tdate_unix\x18\x05 \x01(\x03\x12\x17\n\x0f\x63reator_user_id\x18\x06 \x01(\x03\"P\n\tInputPeer\x12\x15\n\ractor_user_id\x18\x01 \x01(\x03\x12\x11\n\x07user_id\x18\x02 \x01(\x03H\x00\x12\x11\n\x07\x63hat_id\x18\x03 \x01(\x03H\x00\x42\x06\n\x04peer\"\xb1\x01\n\x10UpdateNewMessage\x12\x12\n\nmessage_id\x18\x01 \x01(\x03\x12\x14\n\x0c\x66rom_user_id\x18\x02 \x01(\x03\x12\x0c\n\x04text\x18\x03 \x01(\t\x12\x0c\n\x04\x64\x61te\x18\x04 \x01(\x03\x12\x14\n\x0cpeer_user_id\x18\x05 \x01(\x03\x12\x14\n\x0cpeer_chat_id\x18\x06 \x01(\x03\x12\x0b\n\x03out\x18\x07 \x01(\x08\x12\x0b\n\x03pts\x18\x08 \x01(\x05\x12\x11\n\tpts_count\x18\t \x01(\x05\"8\n\x0fUpdateMessageId\x12\x12\n\nmessage_id\x18\x01 \x01(\x03\x12\x11\n\trandom_id\x18\x02 \x01(\x03\"_\n\x17UpdateReadHistoryOutbox\x12\x14\n\x0cpeer_user_id\x18\x01 \x01(\x03\x12\x0e\n\x06max_id\x18\x02 \x01(\x03\x12\x0b\n\x03pts\x18\x03 \x01(\x05\x12\x11\n\tpts_count\x18\x04 \x01(\x05\"\x87\x02\n\nUpdateItem\x12\x39\n\x0bnew_message\x18\x01 \x01(\x0b\x32\".ntgram.common.v1.UpdateNewMessageH\x00\x12\x37\n\nmessage_id\x18\x02 \x01(\x0b\x32!.ntgram.common.v1.UpdateMessageIdH\x00\x12@\n\x0bread_outbox\x18\x03 \x01(\x0b\x32).ntgram.common.v1.UpdateReadHistoryOutboxH\x00\x12\x17\n\x0fraw_update_json\x18\n \x01(\t\x12\x13\n\x0bupdate_type\x18\x0b \x01(\t\x12\x0b\n\x03pts\x18\x0c \x01(\x05\x42\x08\n\x06update\"\xb9\x01\n\x0eUpdateEnvelope\x12-\n\x07updates\x18\x01 \x03(\x0b\x32\x1c.ntgram.common.v1.UpdateItem\x12/\n\x05users\x18\x02 \x03(\x0b\x32 .ntgram.common.v1.MinimalProfile\x12,\n\x05\x63hats\x18\x03 \x03(\x0b\x32\x1d.ntgram.common.v1.MinimalChat\x12\x0b\n\x03seq\x18\x04 \x01(\x05\x12\x0c\n\x04\x64\x61te\x18\x05 \x01(\x03\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,6 +35,24 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_USERREF']._serialized_end=60
   _globals['_RPCERROR']._serialized_start=62
   _globals['_RPCERROR']._serialized_end=103
-  _globals['_SERVICERESPONSEMETA']._serialized_start=105
-  _globals['_SERVICERESPONSEMETA']._serialized_end=181
+  _globals['_ERRORDETAIL']._serialized_start=105
+  _globals['_ERRORDETAIL']._serialized_end=149
+  _globals['_SERVICERESPONSEMETA']._serialized_start=151
+  _globals['_SERVICERESPONSEMETA']._serialized_end=227
+  _globals['_MINIMALPROFILE']._serialized_start=229
+  _globals['_MINIMALPROFILE']._serialized_end=319
+  _globals['_MINIMALCHAT']._serialized_start=322
+  _globals['_MINIMALCHAT']._serialized_end=456
+  _globals['_INPUTPEER']._serialized_start=458
+  _globals['_INPUTPEER']._serialized_end=538
+  _globals['_UPDATENEWMESSAGE']._serialized_start=541
+  _globals['_UPDATENEWMESSAGE']._serialized_end=718
+  _globals['_UPDATEMESSAGEID']._serialized_start=720
+  _globals['_UPDATEMESSAGEID']._serialized_end=776
+  _globals['_UPDATEREADHISTORYOUTBOX']._serialized_start=778
+  _globals['_UPDATEREADHISTORYOUTBOX']._serialized_end=873
+  _globals['_UPDATEITEM']._serialized_start=876
+  _globals['_UPDATEITEM']._serialized_end=1139
+  _globals['_UPDATEENVELOPE']._serialized_start=1142
+  _globals['_UPDATEENVELOPE']._serialized_end=1327
 # @@protoc_insertion_point(module_scope)

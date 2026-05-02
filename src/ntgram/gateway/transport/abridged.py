@@ -85,10 +85,16 @@ def encode_abridged_packet(payload: bytes, quick_ack_requested: bool = False) ->
     return bytes([marker]) + struct.pack("<I", words)[:3] + payload
 
 
-def compute_quick_ack_token(payload: bytes) -> int:
+def compute_quick_ack_token(payload: bytes, auth_key: bytes | None = None, x: int = 0) -> int:
     """Compute quick-ack token for standalone 4-byte response."""
-    digest = hashlib.sha256(payload).digest()
-    token = int.from_bytes(digest[:4], "big")
+    if auth_key is not None:
+        if len(payload) < 24:
+            raise AbridgedProtocolError("encrypted payload too short for quick ack")
+        digest = hashlib.sha256(auth_key[88 + x : 88 + x + 32] + payload[24:]).digest()
+    else:
+        # Compatibility fallback for tests/non-encrypted callers.
+        digest = hashlib.sha256(payload).digest()
+    token = int.from_bytes(digest[:4], "little")
     return token | 0x80000000
 
 

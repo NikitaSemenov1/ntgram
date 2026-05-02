@@ -4,9 +4,10 @@ import hashlib
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from ntgram.gateway.mtproto.encrypted_layer import (
-    _aes_ige_decrypt_blockwise,
-    _xor_bytes,
+from ntgram.gateway.mtproto.aes import (
+    aes_ige_decrypt,
+    aes_ige_encrypt,
+    xor_bytes,
 )
 
 
@@ -35,11 +36,11 @@ def rsa_pad_decrypt(
     aes_encrypted = key_aes_encrypted[32:]
 
     # recover temp_key
-    temp_key = _xor_bytes(temp_key_xor, hashlib.sha256(aes_encrypted).digest())
+    temp_key = xor_bytes(temp_key_xor, hashlib.sha256(aes_encrypted).digest())
 
     # AES-IGE decrypt with zero IV
     zero_iv = b"\x00" * 32
-    data_with_hash = _aes_ige_decrypt_blockwise(aes_encrypted, temp_key, zero_iv)
+    data_with_hash = aes_ige_decrypt(aes_encrypted, temp_key, zero_iv)
 
     # data_with_hash = data_pad_reversed (192) + sha256_hash (32)
     data_pad_reversed = data_with_hash[:192]
@@ -81,10 +82,9 @@ def rsa_pad_encrypt(
         data_with_hash = data_pad_reversed + hash_val
 
         zero_iv = b"\x00" * 32
-        from ntgram.gateway.mtproto.encrypted_layer import _aes_ige_encrypt_blockwise
-        aes_encrypted = _aes_ige_encrypt_blockwise(data_with_hash, temp_key, zero_iv)
+        aes_encrypted = aes_ige_encrypt(data_with_hash, temp_key, zero_iv)
 
-        temp_key_xor = _xor_bytes(temp_key, hashlib.sha256(aes_encrypted).digest())
+        temp_key_xor = xor_bytes(temp_key, hashlib.sha256(aes_encrypted).digest())
 
         key_aes_encrypted = temp_key_xor + aes_encrypted
 

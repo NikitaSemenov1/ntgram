@@ -3,6 +3,8 @@ FROM python:3.12-slim AS base
 WORKDIR /app
 ENV PYTHONPATH=/app/src
 
+RUN mkdir -p /app/.data && chmod 0777 /app/.data
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
@@ -20,7 +22,8 @@ PY
 COPY migrations/ migrations/
 COPY scripts/ scripts/
 COPY keys/ keys/
-COPY docs/knowledge/mtproto/ docs/knowledge/mtproto/
+COPY config/ config/
+COPY tl/ tl/
 COPY src/ src/
 
 FROM base AS gateway

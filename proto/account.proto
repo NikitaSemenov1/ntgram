@@ -6,10 +6,23 @@ import "common.proto";
 
 service AccountService {
   rpc SendCode(SendCodeRequest) returns (SendCodeResponse);
+  rpc CancelCode(CancelCodeRequest) returns (CancelCodeResponse);
   rpc SignIn(SignInRequest) returns (SignInResponse);
   rpc SignUp(SignUpRequest) returns (SignUpResponse);
   rpc LogOut(LogOutRequest) returns (LogOutResponse);
   rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc CheckUsername(CheckUsernameRequest) returns (CheckUsernameResponse);
+  rpc UpdateUsername(UpdateUsernameRequest) returns (UpdateUsernameResponse);
+  rpc ResolveUsername(ResolveUsernameRequest) returns (ResolveUsernameResponse);
+  rpc SearchUsernames(SearchUsernamesRequest) returns (SearchUsernamesResponse);
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc GetProfiles(GetProfilesRequest) returns (GetProfilesResponse);
+  rpc GetFullUser(GetFullUserRequest) returns (GetFullUserResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc GetPrivacy(GetPrivacyRequest) returns (GetPrivacyResponse);
+  rpc GetPassword(GetPasswordRequest) returns (GetPasswordResponse);
+  rpc GetContentSettings(GetContentSettingsRequest) returns (GetContentSettingsResponse);
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
 }
 
 message SendCodeRequest {
@@ -19,6 +32,15 @@ message SendCodeRequest {
 message SendCodeResponse {
   ntgram.common.v1.ServiceResponseMeta meta = 1;
   string phone_code_hash = 2;
+}
+
+message CancelCodeRequest {
+  string phone = 1;
+  string phone_code_hash = 2;
+}
+
+message CancelCodeResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
 }
 
 message SignInRequest {
@@ -38,6 +60,7 @@ message SignUpRequest {
   string phone_code_hash = 2;
   string first_name = 3;
   string last_name = 4;
+  string phone_code = 5;
 }
 
 message SignUpResponse {
@@ -47,7 +70,7 @@ message SignUpResponse {
 
 message LogOutRequest {
   int64 user_id = 1;
-  int64 auth_key_id = 2;
+  uint64 auth_key_id = 2;
 }
 
 message LogOutResponse {
@@ -64,4 +87,157 @@ message GetUserResponse {
   string phone = 3;
   string first_name = 4;
   string last_name = 5;
+  string username = 6;
+}
+
+message CheckUsernameRequest {
+  string username = 1;
+}
+
+message CheckUsernameResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+}
+
+message UpdateUsernameRequest {
+  int64 user_id = 1;
+  string username = 2;
+}
+
+message UpdateUsernameResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 user_id = 2;
+  string phone = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string username = 6;
+}
+
+message ResolveUsernameRequest {
+  string username = 1;
+}
+
+message ResolveUsernameResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 user_id = 2;
+  string phone = 3;
+  string first_name = 4;
+  string last_name = 5;
+  string username = 6;
+  string bio = 7;
+}
+
+message UsernameSearchHit {
+  int64 user_id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string username = 4;
+  string bio = 5;
+}
+
+message SearchUsernamesRequest {
+  int64 actor_user_id = 1;
+  string q = 2;
+  int32 limit = 3;
+}
+
+message SearchUsernamesResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated UsernameSearchHit hits = 2;
+}
+
+message PrivacyRule {
+  string constructor = 1;
+}
+
+message GetPrivacyRequest {
+  int64 user_id = 1;
+  string key = 2;
+}
+
+message GetPrivacyResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated PrivacyRule rules = 2;
+}
+
+message GetPasswordRequest {
+  int64 user_id = 1;
+}
+
+message GetPasswordResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  bool has_password = 2;
+}
+
+message GetContentSettingsRequest {
+  int64 user_id = 1;
+}
+
+message GetContentSettingsResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  bool sensitive_can_change = 2;
+  bool sensitive_enabled = 3;
+}
+
+message GetConfigRequest {}
+
+message GetConfigResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  string config_json = 2;
+}
+
+message Profile {
+  int64 user_id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string bio = 4;
+  string username = 5;
+}
+
+message GetProfileRequest {
+  int64 actor_user_id = 1;
+  int64 target_user_id = 2;
+}
+
+message GetProfileResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  Profile profile = 2;
+}
+
+message GetProfilesRequest {
+  int64 actor_user_id = 1;
+  repeated int64 user_ids = 2;
+}
+
+message GetProfilesResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated Profile profiles = 2;
+}
+
+message GetFullUserRequest {
+  int64 actor_user_id = 1;
+  int64 target_user_id = 2;
+}
+
+message GetFullUserResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 user_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string bio = 5;
+  bool is_self = 6;
+  string phone = 7;
+  int32 common_chats_count = 8;
+  string username = 9;
+}
+
+message UpdateProfileRequest {
+  int64 actor_user_id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string bio = 4;
+}
+
+message UpdateProfileResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  Profile profile = 2;
 }

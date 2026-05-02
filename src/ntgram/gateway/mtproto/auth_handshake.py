@@ -14,14 +14,14 @@ from ntgram.gateway.mtproto.dh_params import (
     compute_auth_key,
     generate_dh_pair,
 )
-from ntgram.gateway.mtproto.encrypted_layer import _aes_ige_encrypt_blockwise
+from ntgram.gateway.mtproto.aes import aes_ige_encrypt
 from ntgram.gateway.mtproto.rsa_keys import RsaKeyPair
 from ntgram.gateway.mtproto.rsa_pad import RsaPadError, rsa_pad_decrypt
 from ntgram.gateway.mtproto.session_store import SessionStore
 from ntgram.gateway.mtproto.tmp_aes import tmp_aes_decrypt
-from ntgram.tl.codec import encode_tl_object
+from ntgram.tl.codec import Reader, encode_tl_object
 from ntgram.tl.models import TlRequest, TlResponse
-from ntgram.tl.serializer import _Reader, deserialize_from_reader
+from ntgram.tl.serializer import deserialize_from_reader
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,13 @@ def _int_to_bytes_tl(value: int) -> bytes:
     return value.to_bytes(length, "big")
 
 
+def _is_dh_public_value_safe(value: int) -> bool:
+    """Check DH public value using Telegram's recommended tighter range."""
+    lower = 1 << (2048 - 64)
+    upper = DH_PRIME - lower
+    return lower <= value <= upper
+
+
 def _new_nonce_hash(new_nonce: int, tag: int, auth_key_aux_hash: int) -> int:
     """Compute new_nonce_hash{1,2,3} per spec.
 
@@ -144,7 +151,7 @@ class AuthHandshakeProcessor:
         hs = self._sessions.get_or_create_handshake(request.session_id)
         nonce = request.payload.get("nonce", 0)
         if nonce == 0:
-            nonce = secrets.randbits(128)
+            return self._error_response(request, "NONCE_INVALID")
 
         server_nonce = secrets.randbits(128)
         hs.nonce = nonce
@@ -182,6 +189,10 @@ class AuthHandshakeProcessor:
         if req_nonce != hs.nonce or req_server_nonce != hs.server_nonce:
             return self._error_response(request, "NONCE_MISMATCH")
 
+        public_key_fingerprint = int(request.payload.get("public_key_fingerprint", 0))
+        if public_key_fingerprint != self._rsa_keypair.fingerprint:
+            return self._error_response(request, "PUBLIC_KEY_FINGERPRINT_MISMATCH")
+
         encrypted_data = request.payload.get("encrypted_data", b"")
         if isinstance(encrypted_data, str):
             encrypted_data = bytes.fromhex(encrypted_data)
@@ -197,7 +208,7 @@ class AuthHandshakeProcessor:
         try:
             from ntgram.tl.registry import default_schema_registry
             registry = default_schema_registry()
-            reader = _Reader(inner_data_padded)
+            reader = Reader(inner_data_padded)
             name, fields = deserialize_from_reader(reader, registry)
         except Exception as exc:
             logger.warning("failed to parse p_q_inner_data: %s", exc)
@@ -240,7 +251,7 @@ class AuthHandshakeProcessor:
 
         from ntgram.gateway.mtproto.tmp_aes import compute_tmp_aes_key_iv
         tmp_key, tmp_iv = compute_tmp_aes_key_iv(hs.server_nonce, new_nonce)
-        encrypted_answer = _aes_ige_encrypt_blockwise(answer_with_hash, tmp_key, tmp_iv)
+        encrypted_answer = aes_ige_encrypt(answer_with_hash, tmp_key, tmp_iv)
 
         hs.stage = "dh_params_sent"
 
@@ -277,44 +288,44 @@ class AuthHandshakeProcessor:
             decrypted = tmp_aes_decrypt(encrypted_data, hs.server_nonce, hs.new_nonce)
         except Exception as exc:
             logger.warning("tmp_aes decrypt failed: %s", exc)
-            return self._dh_gen_fail(hs, "TMP_AES_DECRYPT_FAILED")
+            return self._dh_gen_fail(request, hs, "TMP_AES_DECRYPT_FAILED")
 
         if len(decrypted) < 20:
-            return self._dh_gen_fail(hs, "CLIENT_DH_TOO_SHORT")
+            return self._dh_gen_fail(request, hs, "CLIENT_DH_TOO_SHORT")
         sha1_prefix = decrypted[:20]
         inner_payload = decrypted[20:]
 
         try:
             from ntgram.tl.registry import default_schema_registry
             registry = default_schema_registry()
-            reader = _Reader(inner_payload)
+            reader = Reader(inner_payload)
             name, fields = deserialize_from_reader(reader, registry)
         except Exception as exc:
             logger.warning("failed to parse client_DH_inner_data: %s", exc)
-            return self._dh_gen_fail(hs, "CLIENT_DH_PARSE_FAILED")
+            return self._dh_gen_fail(request, hs, "CLIENT_DH_PARSE_FAILED")
 
         consumed = inner_payload[:reader.offset]
         expected_sha1 = hashlib.sha1(consumed).digest()
         if expected_sha1 != sha1_prefix:
             logger.warning("client_DH_inner_data SHA1 mismatch")
-            return self._dh_gen_fail(hs, "CLIENT_DH_SHA1_MISMATCH")
+            return self._dh_gen_fail(request, hs, "CLIENT_DH_SHA1_MISMATCH")
 
         if name != "client_DH_inner_data":
-            return self._dh_gen_fail(hs, "CLIENT_DH_CONSTRUCTOR_INVALID")
+            return self._dh_gen_fail(request, hs, "CLIENT_DH_CONSTRUCTOR_INVALID")
 
         if fields.get("nonce") != hs.nonce or fields.get("server_nonce") != hs.server_nonce:
-            return self._dh_gen_fail(hs, "CLIENT_DH_NONCE_MISMATCH")
+            return self._dh_gen_fail(request, hs, "CLIENT_DH_NONCE_MISMATCH")
 
         g_b_bytes = fields.get("g_b", b"")
         g_b = int.from_bytes(g_b_bytes, "big")
 
-        if g_b <= 1 or g_b >= DH_PRIME - 1:
-            return self._dh_gen_fail(hs, "CLIENT_G_B_OUT_OF_RANGE")
+        if not _is_dh_public_value_safe(g_b):
+            return self._dh_gen_fail(request, hs, "CLIENT_G_B_OUT_OF_RANGE")
 
         try:
             auth_key = compute_auth_key(g_b, hs.dh_secret_a)
         except ValueError:
-            return self._dh_gen_fail(hs, "AUTH_KEY_DERIVATION_FAILED")
+            return self._dh_gen_fail(request, hs, "AUTH_KEY_DERIVATION_FAILED")
 
         auth_key_aux_hash = SessionStore.make_auth_key_aux_hash(auth_key)
 
@@ -344,7 +355,7 @@ class AuthHandshakeProcessor:
 
     # Helpers
 
-    def _dh_gen_fail(self, hs, reason: str = "UNKNOWN") -> TlResponse:
+    def _dh_gen_fail(self, request: TlRequest, hs, reason: str = "UNKNOWN") -> TlResponse:
         logger.warning(
             "handshake dh_gen_fail: stage=%s reason=%s",
             hs.stage,
@@ -354,7 +365,7 @@ class AuthHandshakeProcessor:
         if hs.new_nonce is not None:
             nnh3 = _new_nonce_hash(hs.new_nonce, 3, 0)
         return TlResponse(
-            req_msg_id=0,
+            req_msg_id=request.req_msg_id,
             result={
                 "constructor": "dh_gen_fail",
                 "nonce": hs.nonce or 0,

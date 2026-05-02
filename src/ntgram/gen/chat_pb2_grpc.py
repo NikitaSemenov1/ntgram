@@ -49,11 +49,6 @@ class ChatServiceStub(object):
                 request_serializer=chat__pb2.AddChatUserRequest.SerializeToString,
                 response_deserializer=chat__pb2.AddChatUserResponse.FromString,
                 _registered_method=True)
-        self.DeleteChatUser = channel.unary_unary(
-                '/ntgram.chat.v1.ChatService/DeleteChatUser',
-                request_serializer=chat__pb2.DeleteChatUserRequest.SerializeToString,
-                response_deserializer=chat__pb2.DeleteChatUserResponse.FromString,
-                _registered_method=True)
         self.EditChatTitle = channel.unary_unary(
                 '/ntgram.chat.v1.ChatService/EditChatTitle',
                 request_serializer=chat__pb2.EditChatTitleRequest.SerializeToString,
@@ -64,10 +59,45 @@ class ChatServiceStub(object):
                 request_serializer=chat__pb2.GetFullChatRequest.SerializeToString,
                 response_deserializer=chat__pb2.GetFullChatResponse.FromString,
                 _registered_method=True)
+        self.GetChatsBatch = channel.unary_unary(
+                '/ntgram.chat.v1.ChatService/GetChatsBatch',
+                request_serializer=chat__pb2.GetChatsBatchRequest.SerializeToString,
+                response_deserializer=chat__pb2.GetChatsBatchResponse.FromString,
+                _registered_method=True)
         self.ListDialogs = channel.unary_unary(
                 '/ntgram.chat.v1.ChatService/ListDialogs',
                 request_serializer=chat__pb2.ListDialogsRequest.SerializeToString,
                 response_deserializer=chat__pb2.ListDialogsResponse.FromString,
+                _registered_method=True)
+        self.FindDialogsByDialogId = channel.unary_unary(
+                '/ntgram.chat.v1.ChatService/FindDialogsByDialogId',
+                request_serializer=chat__pb2.FindDialogsByDialogIdRequest.SerializeToString,
+                response_deserializer=chat__pb2.FindDialogsByDialogIdResponse.FromString,
+                _registered_method=True)
+        self.SendMessage = channel.unary_unary(
+                '/ntgram.chat.v1.ChatService/SendMessage',
+                request_serializer=chat__pb2.SendMessageRequest.SerializeToString,
+                response_deserializer=chat__pb2.SendMessageResponse.FromString,
+                _registered_method=True)
+        self.EditMessage = channel.unary_unary(
+                '/ntgram.chat.v1.ChatService/EditMessage',
+                request_serializer=chat__pb2.EditMessageRequest.SerializeToString,
+                response_deserializer=chat__pb2.EditMessageResponse.FromString,
+                _registered_method=True)
+        self.DeleteMessages = channel.unary_unary(
+                '/ntgram.chat.v1.ChatService/DeleteMessages',
+                request_serializer=chat__pb2.DeleteMessagesRequest.SerializeToString,
+                response_deserializer=chat__pb2.DeleteMessagesResponse.FromString,
+                _registered_method=True)
+        self.ListMessages = channel.unary_unary(
+                '/ntgram.chat.v1.ChatService/ListMessages',
+                request_serializer=chat__pb2.ListMessagesRequest.SerializeToString,
+                response_deserializer=chat__pb2.ListMessagesResponse.FromString,
+                _registered_method=True)
+        self.ReadHistory = channel.unary_unary(
+                '/ntgram.chat.v1.ChatService/ReadHistory',
+                request_serializer=chat__pb2.ReadHistoryRequest.SerializeToString,
+                response_deserializer=chat__pb2.ReadHistoryResponse.FromString,
                 _registered_method=True)
 
 
@@ -75,7 +105,8 @@ class ChatServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def CreatePrivateDialog(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """--- Chats / dialogs ---
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -87,12 +118,6 @@ class ChatServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def AddChatUser(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def DeleteChatUser(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -110,7 +135,50 @@ class ChatServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetChatsBatch(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ListDialogs(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindDialogsByDialogId(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SendMessage(self, request, context):
+        """--- Messages (formerly MessageService) ---
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def EditMessage(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteMessages(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListMessages(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReadHistory(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -134,11 +202,6 @@ def add_ChatServiceServicer_to_server(servicer, server):
                     request_deserializer=chat__pb2.AddChatUserRequest.FromString,
                     response_serializer=chat__pb2.AddChatUserResponse.SerializeToString,
             ),
-            'DeleteChatUser': grpc.unary_unary_rpc_method_handler(
-                    servicer.DeleteChatUser,
-                    request_deserializer=chat__pb2.DeleteChatUserRequest.FromString,
-                    response_serializer=chat__pb2.DeleteChatUserResponse.SerializeToString,
-            ),
             'EditChatTitle': grpc.unary_unary_rpc_method_handler(
                     servicer.EditChatTitle,
                     request_deserializer=chat__pb2.EditChatTitleRequest.FromString,
@@ -149,10 +212,45 @@ def add_ChatServiceServicer_to_server(servicer, server):
                     request_deserializer=chat__pb2.GetFullChatRequest.FromString,
                     response_serializer=chat__pb2.GetFullChatResponse.SerializeToString,
             ),
+            'GetChatsBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetChatsBatch,
+                    request_deserializer=chat__pb2.GetChatsBatchRequest.FromString,
+                    response_serializer=chat__pb2.GetChatsBatchResponse.SerializeToString,
+            ),
             'ListDialogs': grpc.unary_unary_rpc_method_handler(
                     servicer.ListDialogs,
                     request_deserializer=chat__pb2.ListDialogsRequest.FromString,
                     response_serializer=chat__pb2.ListDialogsResponse.SerializeToString,
+            ),
+            'FindDialogsByDialogId': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindDialogsByDialogId,
+                    request_deserializer=chat__pb2.FindDialogsByDialogIdRequest.FromString,
+                    response_serializer=chat__pb2.FindDialogsByDialogIdResponse.SerializeToString,
+            ),
+            'SendMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.SendMessage,
+                    request_deserializer=chat__pb2.SendMessageRequest.FromString,
+                    response_serializer=chat__pb2.SendMessageResponse.SerializeToString,
+            ),
+            'EditMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.EditMessage,
+                    request_deserializer=chat__pb2.EditMessageRequest.FromString,
+                    response_serializer=chat__pb2.EditMessageResponse.SerializeToString,
+            ),
+            'DeleteMessages': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteMessages,
+                    request_deserializer=chat__pb2.DeleteMessagesRequest.FromString,
+                    response_serializer=chat__pb2.DeleteMessagesResponse.SerializeToString,
+            ),
+            'ListMessages': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListMessages,
+                    request_deserializer=chat__pb2.ListMessagesRequest.FromString,
+                    response_serializer=chat__pb2.ListMessagesResponse.SerializeToString,
+            ),
+            'ReadHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReadHistory,
+                    request_deserializer=chat__pb2.ReadHistoryRequest.FromString,
+                    response_serializer=chat__pb2.ReadHistoryResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -247,33 +345,6 @@ class ChatService(object):
             _registered_method=True)
 
     @staticmethod
-    def DeleteChatUser(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/ntgram.chat.v1.ChatService/DeleteChatUser',
-            chat__pb2.DeleteChatUserRequest.SerializeToString,
-            chat__pb2.DeleteChatUserResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
     def EditChatTitle(request,
             target,
             options=(),
@@ -328,6 +399,33 @@ class ChatService(object):
             _registered_method=True)
 
     @staticmethod
+    def GetChatsBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.chat.v1.ChatService/GetChatsBatch',
+            chat__pb2.GetChatsBatchRequest.SerializeToString,
+            chat__pb2.GetChatsBatchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def ListDialogs(request,
             target,
             options=(),
@@ -344,6 +442,168 @@ class ChatService(object):
             '/ntgram.chat.v1.ChatService/ListDialogs',
             chat__pb2.ListDialogsRequest.SerializeToString,
             chat__pb2.ListDialogsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindDialogsByDialogId(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.chat.v1.ChatService/FindDialogsByDialogId',
+            chat__pb2.FindDialogsByDialogIdRequest.SerializeToString,
+            chat__pb2.FindDialogsByDialogIdResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SendMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.chat.v1.ChatService/SendMessage',
+            chat__pb2.SendMessageRequest.SerializeToString,
+            chat__pb2.SendMessageResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EditMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.chat.v1.ChatService/EditMessage',
+            chat__pb2.EditMessageRequest.SerializeToString,
+            chat__pb2.EditMessageResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteMessages(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.chat.v1.ChatService/DeleteMessages',
+            chat__pb2.DeleteMessagesRequest.SerializeToString,
+            chat__pb2.DeleteMessagesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListMessages(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.chat.v1.ChatService/ListMessages',
+            chat__pb2.ListMessagesRequest.SerializeToString,
+            chat__pb2.ListMessagesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReadHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ntgram.chat.v1.ChatService/ReadHistory',
+            chat__pb2.ReadHistoryRequest.SerializeToString,
+            chat__pb2.ReadHistoryResponse.FromString,
             options,
             channel_credentials,
             insecure,

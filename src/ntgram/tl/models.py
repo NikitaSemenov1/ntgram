@@ -23,6 +23,7 @@ class TlResponse:
     result: dict[str, Any]
     error_code: int | None = None
     error_message: str | None = None
+    content_related: bool = True
 
 
 @dataclass(slots=True, frozen=True)

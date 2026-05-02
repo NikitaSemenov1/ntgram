@@ -315,12 +315,11 @@ def _serialize_value(
 
 
 GENERIC_OBJECT_CONSTRUCTOR_ID = 0x7F010099
+_ACCOUNT_REGISTER_DEVICE_LEGACY_CID = 0x637EA878
+_LANGPACK_GET_LANGUAGES_LEGACY_CID = -0x7FF02A83
 
 
 def _serialize_generic_object(buf: bytearray, value: dict) -> None:
-    """Fallback: serialize a dict without a known TL constructor as a generic
-    wrapper (synthetic constructor_id + JSON bytes). Used for business logic
-    results not yet mapped to proper TL types."""
     import json as _json
     buf.extend(_write_int32(GENERIC_OBJECT_CONSTRUCTOR_ID))
     buf.extend(_write_bytes(_json.dumps(value, ensure_ascii=False).encode("utf-8")))
@@ -372,7 +371,6 @@ def _deserialize_value(
         count = reader.read_int32()
         return [_deserialize_value(inner, reader, registry) for _ in range(count)]
 
-    # Named type -- read boxed constructor
     name, fields = _deserialize_boxed(reader, registry)
     fields["_constructor"] = name
     return fields
@@ -386,6 +384,14 @@ def _deserialize_boxed(
 ) -> tuple[str, dict[str, Any]]:
     """Read a constructor_id and deserialize by spec."""
     cid = reader.read_int32()
+
+    if cid == _ACCOUNT_REGISTER_DEVICE_LEGACY_CID:
+        return "account.registerDevice", {
+            "token_type": reader.read_int32(),
+            "token": reader.read_string(),
+        }
+    if cid == _LANGPACK_GET_LANGUAGES_LEGACY_CID:
+        return "langpack.getLanguages", {}
 
     spec = registry.constructors_by_id.get(cid)
     if spec is not None:

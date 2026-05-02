@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 import common_pb2 as common__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rupdates.proto\x12\x11ntgram.updates.v1\x1a\x0c\x63ommon.proto\"\"\n\x0fGetStateRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\"|\n\x10GetStateResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta\x12\x0b\n\x03pts\x18\x02 \x01(\x05\x12\x0b\n\x03qts\x18\x03 \x01(\x05\x12\x0b\n\x03seq\x18\x04 \x01(\x05\x12\x0c\n\x04\x64\x61te\x18\x05 \x01(\x03\"4\n\x14GetDifferenceRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x0b\n\x03pts\x18\x02 \x01(\x05\"P\n\tPtsUpdate\x12\x0b\n\x03pts\x18\x01 \x01(\x05\x12\x13\n\x0bupdate_type\x18\x02 \x01(\t\x12\x13\n\x0bupdate_data\x18\x03 \x01(\t\x12\x0c\n\x04\x64\x61te\x18\x04 \x01(\x03\"\xaf\x01\n\x15GetDifferenceResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta\x12-\n\x07updates\x18\x02 \x03(\x0b\x32\x1c.ntgram.updates.v1.PtsUpdate\x12\x32\n\x05state\x18\x03 \x01(\x0b\x32#.ntgram.updates.v1.GetStateResponse2\xc9\x01\n\x0eUpdatesService\x12S\n\x08GetState\x12\".ntgram.updates.v1.GetStateRequest\x1a#.ntgram.updates.v1.GetStateResponse\x12\x62\n\rGetDifference\x12\'.ntgram.updates.v1.GetDifferenceRequest\x1a(.ntgram.updates.v1.GetDifferenceResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rupdates.proto\x12\x11ntgram.updates.v1\x1a\x0c\x63ommon.proto\"\"\n\x0fGetStateRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\"|\n\x10GetStateResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta\x12\x0b\n\x03pts\x18\x02 \x01(\x05\x12\x0b\n\x03qts\x18\x03 \x01(\x05\x12\x0b\n\x03seq\x18\x04 \x01(\x05\x12\x0c\n\x04\x64\x61te\x18\x05 \x01(\x03\"4\n\x14GetDifferenceRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x0b\n\x03pts\x18\x02 \x01(\x05\"P\n\tPtsUpdate\x12\x0b\n\x03pts\x18\x01 \x01(\x05\x12\x13\n\x0bupdate_type\x18\x02 \x01(\t\x12\x13\n\x0bupdate_data\x18\x03 \x01(\t\x12\x0c\n\x04\x64\x61te\x18\x04 \x01(\x03\"\xa4\x03\n\x15GetDifferenceResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta\x12-\n\x07updates\x18\x02 \x03(\x0b\x32\x1c.ntgram.updates.v1.PtsUpdate\x12\x32\n\x05state\x18\x03 \x01(\x0b\x32#.ntgram.updates.v1.GetStateResponse\x12\x38\n\x0cnew_messages\x18\x04 \x03(\x0b\x32\".ntgram.common.v1.UpdateNewMessage\x12\x33\n\rother_updates\x18\x05 \x03(\x0b\x32\x1c.ntgram.common.v1.UpdateItem\x12/\n\x05users\x18\x06 \x03(\x0b\x32 .ntgram.common.v1.MinimalProfile\x12,\n\x05\x63hats\x18\x07 \x03(\x0b\x32\x1d.ntgram.common.v1.MinimalChat\x12\x10\n\x08is_slice\x18\x08 \x01(\x08\x12\x13\n\x0bis_too_long\x18\t \x01(\x08\"6\n\x10SubscribeRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x11\n\tsince_pts\x18\x02 \x01(\x05\"A\n\x0bUpdateEvent\x12\x32\n\x08\x65nvelope\x18\x01 \x01(\x0b\x32 .ntgram.common.v1.UpdateEnvelope\"&\n\x13IncrementPtsRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\"X\n\x14IncrementPtsResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta\x12\x0b\n\x03pts\x18\x02 \x01(\x05\",\n\x18IncrementPtsBatchRequest\x12\x10\n\x08user_ids\x18\x01 \x03(\x03\"\'\n\x07UserPts\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x0b\n\x03pts\x18\x02 \x01(\x05\"}\n\x19IncrementPtsBatchResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta\x12+\n\x07\x65ntries\x18\x02 \x03(\x0b\x32\x1a.ntgram.updates.v1.UserPts\"\x8a\x01\n\x16RecordPtsUpdateRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x0b\n\x03pts\x18\x02 \x01(\x05\x12\x11\n\tpts_count\x18\x03 \x01(\x05\x12\x13\n\x0bupdate_type\x18\x04 \x01(\t\x12\x17\n\x0fraw_update_json\x18\x05 \x01(\t\x12\x11\n\tdate_unix\x18\x06 \x01(\x03\"N\n\x17RecordPtsUpdateResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta\"W\n\x1bRecordPtsUpdateBatchRequest\x12\x38\n\x05items\x18\x01 \x03(\x0b\x32).ntgram.updates.v1.RecordPtsUpdateRequest\"S\n\x1cRecordPtsUpdateBatchResponse\x12\x33\n\x04meta\x18\x01 \x01(\x0b\x32%.ntgram.common.v1.ServiceResponseMeta2\xd1\x05\n\x0eUpdatesService\x12S\n\x08GetState\x12\".ntgram.updates.v1.GetStateRequest\x1a#.ntgram.updates.v1.GetStateResponse\x12\x62\n\rGetDifference\x12\'.ntgram.updates.v1.GetDifferenceRequest\x1a(.ntgram.updates.v1.GetDifferenceResponse\x12R\n\tSubscribe\x12#.ntgram.updates.v1.SubscribeRequest\x1a\x1e.ntgram.updates.v1.UpdateEvent0\x01\x12_\n\x0cIncrementPts\x12&.ntgram.updates.v1.IncrementPtsRequest\x1a\'.ntgram.updates.v1.IncrementPtsResponse\x12n\n\x11IncrementPtsBatch\x12+.ntgram.updates.v1.IncrementPtsBatchRequest\x1a,.ntgram.updates.v1.IncrementPtsBatchResponse\x12h\n\x0fRecordPtsUpdate\x12).ntgram.updates.v1.RecordPtsUpdateRequest\x1a*.ntgram.updates.v1.RecordPtsUpdateResponse\x12w\n\x14RecordPtsUpdateBatch\x12..ntgram.updates.v1.RecordPtsUpdateBatchRequest\x1a/.ntgram.updates.v1.RecordPtsUpdateBatchResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,7 +41,29 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_PTSUPDATE']._serialized_start=266
   _globals['_PTSUPDATE']._serialized_end=346
   _globals['_GETDIFFERENCERESPONSE']._serialized_start=349
-  _globals['_GETDIFFERENCERESPONSE']._serialized_end=524
-  _globals['_UPDATESSERVICE']._serialized_start=527
-  _globals['_UPDATESSERVICE']._serialized_end=728
+  _globals['_GETDIFFERENCERESPONSE']._serialized_end=769
+  _globals['_SUBSCRIBEREQUEST']._serialized_start=771
+  _globals['_SUBSCRIBEREQUEST']._serialized_end=825
+  _globals['_UPDATEEVENT']._serialized_start=827
+  _globals['_UPDATEEVENT']._serialized_end=892
+  _globals['_INCREMENTPTSREQUEST']._serialized_start=894
+  _globals['_INCREMENTPTSREQUEST']._serialized_end=932
+  _globals['_INCREMENTPTSRESPONSE']._serialized_start=934
+  _globals['_INCREMENTPTSRESPONSE']._serialized_end=1022
+  _globals['_INCREMENTPTSBATCHREQUEST']._serialized_start=1024
+  _globals['_INCREMENTPTSBATCHREQUEST']._serialized_end=1068
+  _globals['_USERPTS']._serialized_start=1070
+  _globals['_USERPTS']._serialized_end=1109
+  _globals['_INCREMENTPTSBATCHRESPONSE']._serialized_start=1111
+  _globals['_INCREMENTPTSBATCHRESPONSE']._serialized_end=1236
+  _globals['_RECORDPTSUPDATEREQUEST']._serialized_start=1239
+  _globals['_RECORDPTSUPDATEREQUEST']._serialized_end=1377
+  _globals['_RECORDPTSUPDATERESPONSE']._serialized_start=1379
+  _globals['_RECORDPTSUPDATERESPONSE']._serialized_end=1457
+  _globals['_RECORDPTSUPDATEBATCHREQUEST']._serialized_start=1459
+  _globals['_RECORDPTSUPDATEBATCHREQUEST']._serialized_end=1546
+  _globals['_RECORDPTSUPDATEBATCHRESPONSE']._serialized_start=1548
+  _globals['_RECORDPTSUPDATEBATCHRESPONSE']._serialized_end=1631
+  _globals['_UPDATESSERVICE']._serialized_start=1634
+  _globals['_UPDATESSERVICE']._serialized_end=2355
 # @@protoc_insertion_point(module_scope)

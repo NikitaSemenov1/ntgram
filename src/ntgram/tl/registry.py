@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -134,18 +135,21 @@ def load_schema_registry(base_dir: Path) -> TlSchemaRegistry:
     )
 
 
+@cache
 def default_schema_registry() -> TlSchemaRegistry:
+    """Load the canonical TL schema registry once per process."""
     candidates: list[Path] = []
     env_path = os.getenv("NTGRAM_TL_SCHEMA_DIR")
     if env_path:
         candidates.append(Path(env_path))
 
     module_path = Path(__file__).resolve()
+    repo_tl = module_path.parents[3] / "tl"
     candidates.extend(
         [
-            module_path.parents[3] / "docs" / "knowledge" / "mtproto",
-            Path.cwd() / "docs" / "knowledge" / "mtproto",
-            Path("/app/docs/knowledge/mtproto"),
+            repo_tl,
+            Path.cwd() / "tl",
+            Path("/app/tl"),
         ],
     )
 

@@ -19,28 +19,85 @@ Requires-Dist: ruff>=0.6.0; extra == "dev"
 
 # ntgram
 
-Service-oriented Python MTProto-compatible backend targeting MTProto client connectivity over
-TCP abridged transport.
+Python-реализация MTProto-совместимого серверного бэкенда для мессенджера.
+Принимает TCP-подключения от клиентов по протоколу MTProto (abridged transport),
+выполняет DH key exchange, шифрование AES-IGE и маршрутизирует запросы к domain-сервисам через gRPC.
 
-## Components
+## Сервисы
 
-- `gateway-service` - MTProto TCP edge, abridged framing, TL routing.
-- `account-service` - auth and registration flows.
-- `chat-service` - private and group chat lifecycle.
-- `message-service` - message send/list/delete.
-- `profile-service` - profile read/update.
-- `presence-service` - online/offline state and update fanout hints.
 
-## Current status
+| Сервис      | Порт           | Описание                                                                                                                          |
+| ----------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Gateway** | `8080` (TCP)  | MTProto edge: abridged framing, DH handshake, RSA/AES криптография, TL-декодирование, маршрутизация RPC во внутренние gRPC-вызовы |
+| **Account** | `50051` (gRPC) | Авторизация: отправка SMS-кода, вход, регистрация, выход                                                                          |
+| **Chat**    | `50052` (gRPC) | Чаты: создание личных и групповых диалогов, управление участниками                                                                |
+| **Message** | `50053` (gRPC) | Сообщения: отправка, удаление (revoke/personal), история, прочитано                                                               |
+| **Profile** | `50054` (gRPC) | Профиль: просмотр и редактирование (имя, фамилия, bio)                                                                            |
+| **Status**  | `50055` (gRPC) | Статус: online/offline, last seen, update fanout                                                                                  |
+| **Updates** | `50056` (gRPC) | Обновления: PTS-трекинг, getDifference, server-push                                                                               |
 
-This repository contains an MVP-oriented implementation skeleton with typed contracts,
-database schema, transport edge, and integration tests for routing and service interaction.
 
-## RSA keys for auth handshake
+## Стек
 
-Gateway handshake reads RSA PEM files from:
-- `NTGRAM_RSA_PRIVATE_KEY_PATH` (default `./ntgram/keys/private.pem`)
-- `NTGRAM_RSA_PUBLIC_KEY_PATH` (default `./ntgram/keys/public.pem`)
+Python 3.12 · asyncio + uvloop · grpc.aio · asyncpg · PostgreSQL · Redis · cryptography
 
-Generate a keypair with:
-- `make gen-rsa`
+## Запуск через Docker Compose
+
+```bash
+# 1. Сгенерировать RSA-ключи (нужно один раз)
+make gen-rsa
+
+# 2. Поднять всё
+docker compose up --build
+```
+
+Compose запускает PostgreSQL, Redis, domain-сервисы и Gateway.
+Миграции применяются автоматически при первом старте PostgreSQL.
+
+Gateway слушает на `localhost:8080` (MTProto TCP).
+
+## Запуск без Docker
+
+Необходимы работающие PostgreSQL и Redis.
+
+```bash
+# Установить зависимости
+pip install -e ".[dev]"
+
+# Сгенерировать RSA-ключи
+make gen-rsa
+
+# Сгенерировать protobuf-стабы
+make proto
+
+# Запустить domain-сервисы (все сразу)
+make run-services
+
+# В отдельном терминале — запустить Gateway
+make run-gateway
+```
+
+### Переменные окружения
+
+
+| Переменная                    | По умолчанию                                       | Описание               |
+| ----------------------------- | -------------------------------------------------- | ---------------------- |
+| `NTGRAM_GATEWAY_HOST`         | `0.0.0.0`                                          | Хост Gateway           |
+| `NTGRAM_GATEWAY_PORT`         | `8080`                                            | Порт Gateway           |
+| `NTGRAM_POSTGRES_DSN`         | `postgresql://ntgram:ntgram@localhost:5432/ntgram` | DSN PostgreSQL         |
+| `NTGRAM_REDIS_DSN`            | `redis://localhost:6379/0`                         | DSN Redis              |
+| `NTGRAM_RSA_PRIVATE_KEY_PATH` | `./keys/private.pem`                               | Путь к RSA private key |
+| `NTGRAM_RSA_PUBLIC_KEY_PATH`  | `./keys/public.pem`                                | Путь к RSA public key  |
+| `NTGRAM_ACCOUNT_ADDR`         | `127.0.0.1:50051`                                  | Адрес Account Service  |
+| `NTGRAM_CHAT_ADDR`            | `127.0.0.1:50052`                                  | Адрес Chat Service     |
+| `NTGRAM_MESSAGE_ADDR`         | `127.0.0.1:50053`                                  | Адрес Message Service  |
+| `NTGRAM_PROFILE_ADDR`         | `127.0.0.1:50054`                                  | Адрес Profile Service  |
+| `NTGRAM_UPDATES_ADDR`         | `127.0.0.1:50056`                                  | Адрес Updates Service  |
+
+
+## Тесты
+
+```bash
+make test
+```
+

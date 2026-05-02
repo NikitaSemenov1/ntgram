@@ -7,6 +7,13 @@ import "common.proto";
 service UpdatesService {
   rpc GetState(GetStateRequest) returns (GetStateResponse);
   rpc GetDifference(GetDifferenceRequest) returns (GetDifferenceResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream UpdateEvent);
+  rpc IncrementPts(IncrementPtsRequest) returns (IncrementPtsResponse);
+  rpc IncrementPtsBatch(IncrementPtsBatchRequest)
+      returns (IncrementPtsBatchResponse);
+  rpc RecordPtsUpdate(RecordPtsUpdateRequest) returns (RecordPtsUpdateResponse);
+  rpc RecordPtsUpdateBatch(RecordPtsUpdateBatchRequest)
+      returns (RecordPtsUpdateBatchResponse);
 }
 
 message GetStateRequest {
@@ -35,6 +42,69 @@ message PtsUpdate {
 
 message GetDifferenceResponse {
   ntgram.common.v1.ServiceResponseMeta meta = 1;
-  repeated PtsUpdate updates = 2;
+  repeated PtsUpdate updates = 2;  // legacy JSON blob list, kept for compat
   GetStateResponse state = 3;
+  repeated ntgram.common.v1.UpdateNewMessage new_messages = 4;
+  repeated ntgram.common.v1.UpdateItem other_updates = 5;
+  repeated ntgram.common.v1.MinimalProfile users = 6;
+  repeated ntgram.common.v1.MinimalChat chats = 7;
+  bool is_slice = 8;
+  bool is_too_long = 9;
+}
+
+// Subscribe streaming RPC.
+
+message SubscribeRequest {
+  int64 user_id = 1;
+  // Serve updates with pts > since_pts; 0 means "from now".
+  int32 since_pts = 2;
+}
+
+message UpdateEvent {
+  ntgram.common.v1.UpdateEnvelope envelope = 1;
+}
+
+message IncrementPtsRequest {
+  int64 user_id = 1;
+}
+
+message IncrementPtsResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int32 pts = 2;
+}
+
+message IncrementPtsBatchRequest {
+  repeated int64 user_ids = 1;
+}
+
+message UserPts {
+  int64 user_id = 1;
+  int32 pts = 2;
+}
+
+message IncrementPtsBatchResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated UserPts entries = 2;
+}
+
+message RecordPtsUpdateRequest {
+  int64 user_id = 1;
+  int32 pts = 2;
+  int32 pts_count = 3;
+  string update_type = 4;
+  // Full TL Update dict, JSON-encoded (same shape stored in user_pts_updates).
+  string raw_update_json = 5;
+  int64 date_unix = 6;
+}
+
+message RecordPtsUpdateResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+}
+
+message RecordPtsUpdateBatchRequest {
+  repeated RecordPtsUpdateRequest items = 1;
+}
+
+message RecordPtsUpdateBatchResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
 }

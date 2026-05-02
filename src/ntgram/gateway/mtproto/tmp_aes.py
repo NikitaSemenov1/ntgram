@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 
-from ntgram.gateway.mtproto.encrypted_layer import (
-    _aes_ige_decrypt_blockwise,
-    _aes_ige_encrypt_blockwise,
+from ntgram.gateway.mtproto.aes import (
+    aes_ige_decrypt,
+    aes_ige_encrypt,
 )
 
 
@@ -38,10 +38,10 @@ def compute_tmp_aes_key_iv(
 def tmp_aes_encrypt(data: bytes, server_nonce: int, new_nonce: int) -> bytes:
     """AES-256-IGE encrypt using tmp_aes_key/iv derived from nonces."""
     key, iv = compute_tmp_aes_key_iv(server_nonce, new_nonce)
-    return _aes_ige_encrypt_blockwise(data, key, iv)
+    return aes_ige_encrypt(data, key, iv)
 
 
 def tmp_aes_decrypt(data: bytes, server_nonce: int, new_nonce: int) -> bytes:
     """AES-256-IGE decrypt using tmp_aes_key/iv derived from nonces."""
     key, iv = compute_tmp_aes_key_iv(server_nonce, new_nonce)
-    return _aes_ige_decrypt_blockwise(data, key, iv)
+    return aes_ige_decrypt(data, key, iv)

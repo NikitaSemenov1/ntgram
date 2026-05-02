@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 import gzip
+import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
+from ntgram.tl.codec import decode_tl_request
 from ntgram.tl.models import TlRequest, TlResponse
+
+if TYPE_CHECKING:
+    from ntgram.gateway.connection.rpc_result_store import RpcResultStore
+
+MAX_CONTAINER_MESSAGES = 1024
+
+logger = logging.getLogger(__name__)
 
 
 class ServiceSemanticsError(ValueError):
@@ -12,7 +22,8 @@ class ServiceSemanticsError(ValueError):
 
 @dataclass(slots=True)
 class ServiceContext:
-    pending_results: dict[int, TlResponse] = field(default_factory=dict)
+    """Per-MTProto-session control-message state."""
+
     acked_ids: set[int] = field(default_factory=set)
 
 
@@ -52,17 +63,25 @@ def decode_service_request(request: TlRequest) -> list[TlRequest]:
         items = request.payload.get("messages", [])
         if not isinstance(items, list):
             raise ServiceSemanticsError("msg_container.messages must be list")
+        if len(items) > MAX_CONTAINER_MESSAGES:
+            raise ServiceSemanticsError("msg_container.messages exceeds 1024")
         decoded: list[TlRequest] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
+            constructor = str(item["constructor"])
+            if constructor == "msg_container":
+                raise ServiceSemanticsError("nested msg_container is not allowed")
+            inner_msg_id = int(item.get("req_msg_id", request.req_msg_id))
+            if request.message_id is not None and inner_msg_id >= request.message_id:
+                raise ServiceSemanticsError("container msg_id must be greater than inner msg_id")
             nested_request = TlRequest(
                 constructor_id=int(item.get("constructor_id", 0)),
-                constructor=str(item["constructor"]),
-                req_msg_id=int(item.get("req_msg_id", request.req_msg_id)),
+                constructor=constructor,
+                req_msg_id=inner_msg_id,
                 auth_key_id=request.auth_key_id,
                 session_id=request.session_id,
-                message_id=int(item.get("req_msg_id", request.req_msg_id)),
+                message_id=inner_msg_id,
                 seq_no=int(item.get("seq_no", request.seq_no or 0)),
                 invoke_layer=request.invoke_layer,
                 payload=dict(item.get("payload", {})),
@@ -71,28 +90,44 @@ def decode_service_request(request: TlRequest) -> list[TlRequest]:
         return decoded
     if request.constructor == "gzip_packed":
         packed = request.payload.get("packed_data")
-        if not isinstance(packed, str):
-            raise ServiceSemanticsError("gzip_packed.packed_data must be hex string")
-        _ = gzip.decompress(bytes.fromhex(packed))
-        # Current phase keeps decoded payload in the parent request body.
-        inner = request.payload.get("inner_request")
-        if not isinstance(inner, dict):
-            raise ServiceSemanticsError("gzip_packed.inner_request is required")
+        if isinstance(packed, str):
+            packed_bytes = bytes.fromhex(packed)
+        elif isinstance(packed, (bytes, bytearray, memoryview)):
+            packed_bytes = bytes(packed)
+        else:
+            raise ServiceSemanticsError("gzip_packed.packed_data must be bytes")
+        try:
+            inner_request = decode_tl_request(gzip.decompress(packed_bytes))
+        except Exception as exc:
+            raise ServiceSemanticsError("gzip_packed payload is invalid TL") from exc
         nested_request = TlRequest(
-            constructor_id=int(inner.get("constructor_id", 0)),
-            constructor=str(inner["constructor"]),
-            req_msg_id=int(inner.get("req_msg_id", request.req_msg_id)),
+            constructor_id=inner_request.constructor_id,
+            constructor=inner_request.constructor,
+            req_msg_id=request.req_msg_id,
             auth_key_id=request.auth_key_id,
             session_id=request.session_id,
-            message_id=int(inner.get("req_msg_id", request.req_msg_id)),
-            seq_no=int(inner.get("seq_no", request.seq_no or 0)),
+            message_id=request.message_id,
+            seq_no=request.seq_no,
             invoke_layer=request.invoke_layer,
-            payload=dict(inner.get("payload", {})),
+            payload=inner_request.payload,
         )
         return decode_service_request(nested_request)
     if request.constructor == "invokeWithLayer":
         raw_layer = request.payload.get("layer")
         invoke_layer = raw_layer if isinstance(raw_layer, int) and raw_layer > 0 else request.invoke_layer
+        query = request.payload.get("query")
+        inner_ctor: str | None = None
+        if isinstance(query, dict):
+            ic = query.get("_constructor") or query.get("constructor")
+            inner_ctor = str(ic) if isinstance(ic, str) else None
+        logger.info(
+            "invokeWithLayer: auth_key_id=%s session_id=%s layer_raw=%r layer_effective=%s inner_query=%s",
+            request.auth_key_id,
+            request.session_id,
+            raw_layer,
+            invoke_layer,
+            inner_ctor,
+        )
         return decode_service_request(
             _unwrap_query_request(
                 request,
@@ -108,8 +143,13 @@ def decode_service_request(request: TlRequest) -> list[TlRequest]:
     return [request]
 
 
-def handle_control_message(context: ServiceContext, request: TlRequest) -> TlResponse | None:
-    if request.constructor == "ping":
+def handle_control_message(
+    context: ServiceContext,
+    request: TlRequest,
+    store: RpcResultStore | None = None,
+) -> TlResponse | None:
+    if request.constructor in ("ping", "ping_delay_disconnect"):
+        # ping_delay_disconnect: disconnect_delay is ignored (no server-side timer).
         ping_id = int(request.payload.get("ping_id", 0))
         return TlResponse(
             req_msg_id=request.req_msg_id,
@@ -120,18 +160,17 @@ def handle_control_message(context: ServiceContext, request: TlRequest) -> TlRes
         if isinstance(ack_ids, list):
             context.acked_ids.update(int(item) for item in ack_ids if isinstance(item, int))
         return None
-    if request.constructor == "auth.bindTempAuthKey":
-        return wrap_rpc_result(
-            request.req_msg_id,
-            {"constructor": "boolTrue"},
-        )
     if request.constructor == "msg_resend_req":
         msg_ids = request.payload.get("msg_ids", [])
         if not isinstance(msg_ids, list):
             raise ServiceSemanticsError("msg_resend_req.msg_ids must be list")
-        for msg_id in msg_ids:
-            if isinstance(msg_id, int) and msg_id in context.pending_results:
-                return context.pending_results[msg_id]
+        if store is not None:
+            for msg_id in msg_ids:
+                if not isinstance(msg_id, int):
+                    continue
+                cached = store.get_for_resend(request.session_id, msg_id)
+                if cached is not None:
+                    return cached
         return TlResponse(
             req_msg_id=request.req_msg_id,
             result={"constructor": "rpc_answer_unknown"},

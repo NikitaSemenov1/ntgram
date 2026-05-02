@@ -8,10 +8,16 @@ service ChatService {
   rpc CreatePrivateDialog(CreatePrivateDialogRequest) returns (CreatePrivateDialogResponse);
   rpc CreateGroupChat(CreateGroupChatRequest) returns (CreateGroupChatResponse);
   rpc AddChatUser(AddChatUserRequest) returns (AddChatUserResponse);
-  rpc DeleteChatUser(DeleteChatUserRequest) returns (DeleteChatUserResponse);
   rpc EditChatTitle(EditChatTitleRequest) returns (EditChatTitleResponse);
   rpc GetFullChat(GetFullChatRequest) returns (GetFullChatResponse);
+  rpc GetChatsBatch(GetChatsBatchRequest) returns (GetChatsBatchResponse);
   rpc ListDialogs(ListDialogsRequest) returns (ListDialogsResponse);
+  rpc FindDialogsByDialogId(FindDialogsByDialogIdRequest) returns (FindDialogsByDialogIdResponse);
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
+  rpc EditMessage(EditMessageRequest) returns (EditMessageResponse);
+  rpc DeleteMessages(DeleteMessagesRequest) returns (DeleteMessagesResponse);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc ReadHistory(ReadHistoryRequest) returns (ReadHistoryResponse);
 }
 
 message CreatePrivateDialogRequest {
@@ -33,6 +39,12 @@ message CreateGroupChatRequest {
 message CreateGroupChatResponse {
   ntgram.common.v1.ServiceResponseMeta meta = 1;
   int64 chat_id = 2;
+  int64 dialog_id = 3;
+  int64 date_unix = 4;
+  int64 service_message_id = 5;
+  ntgram.common.v1.UpdateEnvelope updates = 6;
+  repeated ntgram.common.v1.MinimalProfile users = 7;
+  repeated ntgram.common.v1.MinimalChat chats = 8;
 }
 
 message AddChatUserRequest {
@@ -43,16 +55,9 @@ message AddChatUserRequest {
 
 message AddChatUserResponse {
   ntgram.common.v1.ServiceResponseMeta meta = 1;
-}
-
-message DeleteChatUserRequest {
-  int64 actor_user_id = 1;
-  int64 chat_id = 2;
-  int64 user_id = 3;
-}
-
-message DeleteChatUserResponse {
-  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  ntgram.common.v1.UpdateEnvelope updates = 2;
+  repeated ntgram.common.v1.MinimalProfile users = 3;
+  repeated ntgram.common.v1.MinimalChat chats = 4;
 }
 
 message EditChatTitleRequest {
@@ -63,6 +68,18 @@ message EditChatTitleRequest {
 
 message EditChatTitleResponse {
   ntgram.common.v1.ServiceResponseMeta meta = 1;
+  ntgram.common.v1.UpdateEnvelope updates = 2;
+  repeated ntgram.common.v1.MinimalProfile users = 3;
+  repeated ntgram.common.v1.MinimalChat chats = 4;
+}
+
+// Per-member snapshot for a TL ``chatParticipant`` / ``chatParticipantCreator``.
+message ChatParticipant {
+  int64 user_id = 1;
+  int64 inviter_user_id = 2;
+  int64 date_unix = 3;
+  // 0 = creator, 1 = regular member.
+  int32 kind = 4;
 }
 
 message GetFullChatRequest {
@@ -75,19 +92,175 @@ message GetFullChatResponse {
   string title = 3;
   int64 creator_id = 4;
   repeated int64 member_user_ids = 5;
+  repeated ChatParticipant participants = 6;
+  repeated ntgram.common.v1.MinimalProfile users = 7;
+  int32 version = 8;
+  int32 participants_count = 9;
+  int64 date_unix = 10;
+}
+
+message GetChatsBatchRequest {
+  repeated int64 chat_ids = 1;
+}
+
+message GetChatsBatchResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated ntgram.common.v1.MinimalChat chats = 2;
 }
 
 message ListDialogsRequest {
   int64 actor_user_id = 1;
+  int32 limit = 2;
 }
 
 message Dialog {
   int64 dialog_id = 1;
   int64 peer_id = 2;
   bool is_group = 3;
+  int64 read_inbox_max_id = 4;
+  int64 top_message_id = 5;
+  int64 top_from_user_id = 6;
+  string top_message_text = 7;
+  int64 top_message_date = 8;
+  int64 read_outbox_max_id = 9;
+  int32 unread_count = 10;
+  bool top_message_out = 11;
+  int64 top_dialog_message_id = 12;
 }
 
 message ListDialogsResponse {
   ntgram.common.v1.ServiceResponseMeta meta = 1;
   repeated Dialog dialogs = 2;
+  repeated ntgram.common.v1.MinimalProfile users = 3;
+  repeated ntgram.common.v1.MinimalChat chats = 4;
+  int32 total_count = 5;
+}
+
+message DialogOwner {
+  int64 owner_user_id = 1;
+  int64 peer_id = 2;
+  bool is_group = 3;
+}
+
+message FindDialogsByDialogIdRequest {
+  int64 dialog_id = 1;
+}
+
+message FindDialogsByDialogIdResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated DialogOwner owners = 2;
+}
+
+message SendMessageRequest {
+  int64 actor_user_id = 1;
+  int64 dialog_id = 2;  // deprecated: prefer peer field
+  string text = 3;
+  int64 random_id = 4;
+  ntgram.common.v1.InputPeer peer = 5;
+}
+
+// One delivered MessageBox copy of a logical message.
+message ParticipantDelivery {
+  int64 user_id = 1;
+  int64 user_message_box_id = 2;
+  int32 pts = 3;
+  int64 dialog_id = 4;
+  int64 peer_id = 5;
+  bool is_group = 6;
+}
+
+message SendMessageResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 actor_user_message_box_id = 2;
+  int32 pts = 3;
+  int64 dialog_message_id = 4;
+  int64 date_unix = 5;
+  repeated ParticipantDelivery participants = 6;
+  ntgram.common.v1.UpdateEnvelope updates = 7;
+  repeated ntgram.common.v1.MinimalProfile users = 8;
+  repeated ntgram.common.v1.MinimalChat chats = 9;
+}
+
+message DeleteMessagesRequest {
+  int64 actor_user_id = 1;
+  repeated int64 user_message_box_ids = 2;
+  bool revoke = 3;
+}
+
+message DeleteMessagesResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int32 pts = 2;
+  int32 pts_count = 3;
+  repeated int64 deleted_ids = 4;
+  ntgram.common.v1.UpdateEnvelope updates = 5;
+}
+
+message EditMessageRequest {
+  int64 actor_user_id = 1;
+  int64 user_message_box_id = 2;
+  string new_text = 3;
+  string new_entities_json = 4;
+}
+
+message EditMessageResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int64 dialog_message_id = 2;
+  int64 actor_user_message_box_id = 3;
+  int64 edit_date = 4;
+  ntgram.common.v1.UpdateEnvelope updates = 5;
+  repeated ntgram.common.v1.MinimalProfile users = 6;
+  repeated ntgram.common.v1.MinimalChat chats = 7;
+}
+
+message ListMessagesRequest {
+  int64 actor_user_id = 1;
+  int64 dialog_id = 2;  // deprecated: prefer peer field
+  int32 limit = 3;
+  int32 offset_id = 4;
+  int32 offset_date = 5;
+  int32 add_offset = 6;
+  int32 max_id = 7;
+  int32 min_id = 8;
+  int64 hash = 9;
+  ntgram.common.v1.InputPeer peer = 10;
+}
+
+message Message {
+  // Per-actor MessageBox id; client sees this as ``message.id``.
+  int64 message_id = 1;
+  int64 from_user_id = 2;
+  string text = 3;
+  int64 date = 4;
+  bool out = 5;
+  int64 dialog_message_id = 6;
+}
+
+message ListMessagesResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  repeated Message messages = 2;
+  int32 total_count = 3;
+  repeated ntgram.common.v1.MinimalProfile users = 4;
+  repeated ntgram.common.v1.MinimalChat chats = 5;
+}
+
+message ReadHistoryRequest {
+  int64 actor_user_id = 1;
+  int64 dialog_id = 2;
+  int64 max_id = 3;
+  ntgram.common.v1.InputPeer peer = 4;
+}
+
+message ReadOutboxReceipt {
+  int64 sender_user_id = 1;
+  int64 sender_dialog_id = 2;
+  int64 max_outbox_id = 3;
+  int32 pts = 4;
+}
+
+message ReadHistoryResponse {
+  ntgram.common.v1.ServiceResponseMeta meta = 1;
+  int32 pts = 2;
+  int32 pts_count = 3;
+  repeated ReadOutboxReceipt receipts = 4;
+  ntgram.common.v1.UpdateEnvelope updates = 5;
 }
