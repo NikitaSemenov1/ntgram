@@ -159,7 +159,6 @@ class UpdatesService(updates_pb2_grpc.UpdatesServiceServicer):
             pts=int(request.pts),
             update_type=str(request.update_type or ""),
             data=str(request.raw_update_json or "{}"),
-            pts_count=int(request.pts_count) if request.pts_count else 1,
             date_unix=int(request.date_unix) if request.date_unix else None,
         )
         return updates_pb2.RecordPtsUpdateResponse(meta=_ok_meta())
@@ -170,7 +169,6 @@ class UpdatesService(updates_pb2_grpc.UpdatesServiceServicer):
                 int(it.user_id), int(it.pts),
                 str(it.update_type or ""),
                 str(it.raw_update_json or "{}"),
-                int(it.pts_count) if it.pts_count else 1,
                 int(it.date_unix) if it.date_unix else None,
             )
             for it in request.items

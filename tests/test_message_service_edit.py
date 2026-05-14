@@ -36,7 +36,7 @@ async def test_edit_message_propagates_to_all_participants() -> None:
         b for b in pool.boxes_for(1) if b.user_message_box_id == actor_ubid
     )
     dmid = sender_box.dialog_message_id
-    assert {b.text for b in pool.state.boxes if b.dialog_message_id == dmid} == {"hi"}
+    assert pool.state.messages[dmid].text == "hi"
 
     resp = await svc.EditMessage(
         chat_pb2.EditMessageRequest(
@@ -51,9 +51,10 @@ async def test_edit_message_propagates_to_all_participants() -> None:
     assert resp.dialog_message_id == dmid
     assert resp.edit_date > 0
 
-    edited = [b for b in pool.state.boxes if b.dialog_message_id == dmid]
-    assert {b.text for b in edited} == {"hello edited"}
-    assert all(b.edit_date == resp.edit_date for b in edited)
+    # Edit propagates by mutating the single ``messages`` row.
+    edited_msg = pool.state.messages[dmid]
+    assert edited_msg.text == "hello edited"
+    assert edited_msg.edit_date == resp.edit_date
 
     edit_pts = [
         u for u in updates.recorded
@@ -86,7 +87,7 @@ async def test_edit_message_rejects_non_author() -> None:
     )
     assert not resp.meta.ok
     assert resp.meta.error.message == "MESSAGE_AUTHOR_REQUIRED"
-    assert all(b.edit_date == 0 for b in pool.state.boxes)
+    assert all(m.edit_date == 0 for m in pool.state.messages.values())
 
 
 @pytest.mark.asyncio

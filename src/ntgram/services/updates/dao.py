@@ -14,10 +14,9 @@ class UpdatesDAO:
 
     async def increment_pts(self, user_id: int) -> int:
         row = await self._pool.fetchrow(
-            """INSERT INTO update_state
-               (user_id, session_id, pts, qts, seq, state_date_unix)
-               VALUES ($1, 0, 1, 0, 0, $2)
-               ON CONFLICT (user_id, session_id)
+            """INSERT INTO update_state (user_id, pts, state_date_unix)
+               VALUES ($1, 1, $2)
+               ON CONFLICT (user_id)
                DO UPDATE SET pts = update_state.pts + 1,
                              state_date_unix = $2
                RETURNING pts""",
@@ -34,10 +33,9 @@ class UpdatesDAO:
         now = int(time.time())
         for uid in user_ids:
             row = await self._pool.fetchrow(
-                """INSERT INTO update_state
-                   (user_id, session_id, pts, qts, seq, state_date_unix)
-                   VALUES ($1, 0, 1, 0, 0, $2)
-                   ON CONFLICT (user_id, session_id)
+                """INSERT INTO update_state (user_id, pts, state_date_unix)
+                   VALUES ($1, 1, $2)
+                   ON CONFLICT (user_id)
                    DO UPDATE SET pts = update_state.pts + 1,
                                  state_date_unix = $2
                    RETURNING pts""",
@@ -55,23 +53,18 @@ class UpdatesDAO:
         update_type: str,
         data: dict | str,
         *,
-        pts_count: int = 1,
         date_unix: int | None = None,
     ) -> None:
         """Persist one user_pts_updates row + NOTIFY subscriber."""
         sql = (
             "INSERT INTO user_pts_updates "
-            "(user_id, pts, update_type, update_data, date_unix, pts_count) "
-            "VALUES ($1, $2, $3, $4, $5, $6)"
+            "(user_id, pts, update_type, update_data, date_unix) "
+            "VALUES ($1, $2, $3, $4, $5)"
         )
-        if isinstance(data, str):
-            payload = data
-        else:
-            payload = json.dumps(data)
+        payload = data if isinstance(data, str) else json.dumps(data)
         args = (
             int(user_id), int(pts), str(update_type), payload,
             int(date_unix) if date_unix else int(time.time()),
-            int(pts_count),
         )
         async with self._pool.acquire() as conn:
             async with conn.transaction():
@@ -81,26 +74,25 @@ class UpdatesDAO:
 
     async def record_pts_update_batch(
         self,
-        items: list[tuple[int, int, str, dict | str, int, int | None]],
+        items: list[tuple[int, int, str, dict | str, int | None]],
     ) -> None:
         """Persist many rows in one transaction."""
         if not items:
             return
         sql = (
             "INSERT INTO user_pts_updates "
-            "(user_id, pts, update_type, update_data, date_unix, pts_count) "
-            "VALUES ($1, $2, $3, $4, $5, $6)"
+            "(user_id, pts, update_type, update_data, date_unix) "
+            "VALUES ($1, $2, $3, $4, $5)"
         )
         notified: set[int] = set()
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                for uid, pts, upd_type, data, pts_count, date_unix in items:
+                for uid, pts, upd_type, data, date_unix in items:
                     payload = data if isinstance(data, str) else json.dumps(data)
                     await conn.execute(
                         sql,
                         int(uid), int(pts), str(upd_type), payload,
                         int(date_unix) if date_unix else int(time.time()),
-                        int(pts_count),
                     )
                     notified.add(int(uid))
                 for uid in notified:
@@ -109,16 +101,18 @@ class UpdatesDAO:
     # Reads (used by GetState / GetDifference / Subscribe)
 
     async def get_state(self, user_id: int) -> tuple[int, int, int, int]:
+        """Return (pts, qts, seq, state_date_unix).
+        """
         row = await self._pool.fetchrow(
-            "SELECT pts, qts, seq, state_date_unix "
-            "FROM update_state WHERE user_id = $1 AND session_id = 0",
+            "SELECT pts, state_date_unix "
+            "FROM update_state WHERE user_id = $1",
             int(user_id),
         )
         if row is None:
             return (0, 0, 0, 0)
         return (
-            int(row["pts"]), int(row["qts"]),
-            int(row["seq"]), int(row["state_date_unix"]),
+            int(row["pts"]), 0, 0,
+            int(row["state_date_unix"]),
         )
 
     async def get_pts_updates_since(

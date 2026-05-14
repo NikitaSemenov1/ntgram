@@ -9,7 +9,7 @@ from ntgram.gen import account_pb2, chat_pb2
 from ntgram.services.chat.dao import ChatDAO
 
 from tests._chat_service_factory import make_chat_service
-from tests._fake_chat_pool import FakeChatPool, _ChatMemberRec, _ChatRec
+from tests._fake_chat_pool import FakeChatPool, _ChatRec
 
 
 # ---------------------------------------------------------------------------
@@ -69,49 +69,47 @@ def _seed_group_state(
     members: list[int],
     creator: int,
 ) -> None:
-    """Seed minimal chat / chat_members / dialog rows for a group test."""
+    """Seed minimal chat / threads / participants / dialog_state rows."""
     pool.state.chats.append(
         _ChatRec(
             chat_id=chat_id, title="g", created_by=creator,
             version=1, participants_count=len(members), date_unix=1,
         ),
     )
+    pool.add_thread(thread_id=dialog_id, chat_id=chat_id)
     for uid in members:
-        pool.state.chat_members.append(
-            _ChatMemberRec(
-                chat_id=chat_id, user_id=uid,
-                inviter_user_id=creator, joined_at_unix=1,
-            ),
+        pool.add_thread_participant(
+            dialog_id, uid, inviter_user_id=creator, joined_at_unix=1,
         )
-        pool.add_dialog(dialog_id, owner_user_id=uid, peer_id=chat_id, is_group=True)
+        pool.add_dialog_state(
+            dialog_id, owner_user_id=uid, peer_chat_id=chat_id,
+        )
 
 
 @pytest.mark.asyncio
 async def test_send_message_to_chat_without_membership_fails() -> None:
-    """Group send: actor must appear in chat_members or we return 403.
+    """Group send: actor must appear in thread_participants or we return 403.
 
-    The membership check now goes through ``ChatDAO.get_member_ids`` —
-    no extra RPC.
+    The membership check now goes through
+    ``ChatDAO.get_thread_participant_ids`` — no extra RPC.
     """
     svc, pool, _ = make_chat_service()
     chat_id = 3001
     dialog_id = 2002
-    # Members include user 10 only (the creator); user 20 sees the dialog
-    # row but is not in chat_members, so the write must be rejected.
-    pool.add_dialog(dialog_id, owner_user_id=20, peer_id=chat_id, is_group=True)
-    pool.add_dialog(dialog_id, owner_user_id=10, peer_id=chat_id, is_group=True)
+    # Member is user 10 (the creator); user 20 sees the dialog_state row
+    # but is not in thread_participants, so the write must be rejected.
     pool.state.chats.append(
         _ChatRec(
             chat_id=chat_id, title="g", created_by=10,
             version=1, participants_count=1, date_unix=1,
         ),
     )
-    pool.state.chat_members.append(
-        _ChatMemberRec(
-            chat_id=chat_id, user_id=10,
-            inviter_user_id=10, joined_at_unix=1,
-        ),
+    pool.add_thread(thread_id=dialog_id, chat_id=chat_id)
+    pool.add_thread_participant(
+        dialog_id, 10, inviter_user_id=10, joined_at_unix=1,
     )
+    pool.add_dialog_state(dialog_id, owner_user_id=10, peer_chat_id=chat_id)
+    pool.add_dialog_state(dialog_id, owner_user_id=20, peer_chat_id=chat_id)
 
     resp = await svc.SendMessage(
         chat_pb2.SendMessageRequest(
@@ -295,22 +293,22 @@ async def test_peer_outbox_for_inbox_excludes_reader() -> None:
     )
 
     receipts = await dao.peer_outbox_for_inbox(
-        reader_user_id=1, dialog_id=2001, max_inbox_ubid=11,
+        reader_user_id=1, thread_id=2001, max_inbox_ubid=11,
     )
     assert {r.sender_user_id for r in receipts} == set()
 
 
 @pytest.mark.asyncio
-async def test_find_dialog_by_peer_pm_and_group() -> None:
+async def test_find_thread_by_peer_pm_and_group() -> None:
     pool = FakeChatPool()
     pool.add_dialog(2050, owner_user_id=1, peer_id=2, is_group=False)
     pool.add_dialog(2051, owner_user_id=1, peer_id=3001, is_group=True)
     dao = ChatDAO(pool)
 
-    assert await dao.find_dialog_by_peer(1, is_group=False, peer_id=2) == 2050
-    assert await dao.find_dialog_by_peer(1, is_group=True, peer_id=3001) == 2051
-    assert await dao.find_dialog_by_peer(1, is_group=True, peer_id=9999) is None
-    assert await dao.find_dialog_by_peer(1, is_group=False, peer_id=3001) is None
+    assert await dao.find_thread_by_peer(1, peer_user_id=2) == 2050
+    assert await dao.find_thread_by_peer(1, peer_chat_id=3001) == 2051
+    assert await dao.find_thread_by_peer(1, peer_chat_id=9999) is None
+    assert await dao.find_thread_by_peer(1, peer_user_id=3001) is None
 
 
 @pytest.mark.asyncio

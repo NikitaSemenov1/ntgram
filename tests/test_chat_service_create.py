@@ -41,25 +41,40 @@ async def test_create_group_chat_emits_service_message_per_member() -> None:
     chat = pool.state.chats[0]
     assert chat.chat_id == resp.chat_id
     assert chat.participants_count == 3  # creator + 2 invited
-    assert chat.version == 2  # bulk_add_members increment
+    assert chat.version == 2  # bulk_add_thread_participants increment
 
-    # 3 chat_members rows (creator + 2 invited).
-    assert {m.user_id for m in pool.state.chat_members} == {1, 2, 3}
-    for m in pool.state.chat_members:
-        assert m.inviter_user_id == 1
+    # Exactly one thread bound to the chat.
+    threads = [t for t in pool.state.threads if t.chat_id == resp.chat_id]
+    assert len(threads) == 1
+    thread_id = threads[0].thread_id
+    assert thread_id == resp.dialog_id
 
-    # 3 dialog rows (one per participant, sharing one dialog_id).
-    dlg_ids = {d.dialog_id for d in pool.state.dialogs}
-    assert dlg_ids == {resp.dialog_id}
-    assert {d.owner_user_id for d in pool.state.dialogs} == {1, 2, 3}
+    # 3 thread_participants rows (creator + 2 invited).
+    participants = [
+        p for p in pool.state.thread_participants if p.thread_id == thread_id
+    ]
+    assert {p.user_id for p in participants} == {1, 2, 3}
+    for p in participants:
+        assert p.inviter_user_id == 1
 
-    # One message_boxes row per participant for the service message.
-    assert len(pool.state.boxes) == 3
-    assert {b.user_id for b in pool.state.boxes} == {1, 2, 3}
-    actor_box = next(b for b in pool.state.boxes if b.user_id == 1)
-    assert actor_box.out is True
-    assert actor_box.text == ""
-    assert actor_box.peer_id == resp.chat_id
+    # 3 dialog_state rows (one per participant).
+    states = [
+        d for d in pool.state.dialog_states if d.thread_id == thread_id
+    ]
+    assert {d.owner_user_id for d in states} == {1, 2, 3}
+    # Each owner's peer is the chat (peer_chat_id), not another user.
+    assert {d.peer_chat_id for d in states} == {resp.chat_id}
+    assert {d.peer_user_id for d in states} == {0}
+
+    # Lifecycle event persisted in chat_events; no messages/message_boxes
+    # rows are created for service messages anymore.
+    assert len(pool.state.boxes) == 0
+    assert len(pool.state.messages) == 0
+    assert len(pool.state.chat_events) == 1
+    event = pool.state.chat_events[0]
+    assert event.kind == "chat_create"
+    assert event.chat_id == resp.chat_id
+    assert event.actor_user_id == 1
 
     # PTS update per participant (recorded via UpdatesServiceStub).
     assert len(updates.recorded) == 3
@@ -114,6 +129,11 @@ async def test_create_group_chat_dedupes_actor_in_member_ids() -> None:
     assert resp.meta.ok
 
     # Distinct participants only: 1 (creator) + 2.
-    assert {b.user_id for b in pool.state.boxes} == {1, 2}
+    thread_id = resp.dialog_id
+    participants = [
+        p.user_id for p in pool.state.thread_participants
+        if p.thread_id == thread_id
+    ]
+    assert set(participants) == {1, 2}
     chat = pool.state.chats[0]
     assert chat.participants_count == 2

@@ -85,11 +85,9 @@ class AccountDAO:
         """Exact match on stored username (already normalized lowercase)."""
         row = await self._pool.fetchrow(
             """
-            SELECT u.user_id, u.phone, u.first_name, u.last_name, u.username,
-                   coalesce(p.bio, '') AS bio
-            FROM users u
-            LEFT JOIN user_profiles p USING (user_id)
-            WHERE u.username = $1
+            SELECT user_id, phone, first_name, last_name, username, bio
+            FROM users
+            WHERE username = $1
             """,
             username,
         )
@@ -110,14 +108,12 @@ class AccountDAO:
         """Prefix match on users.username; prefix must be safe for LIKE (no %/_)."""
         rows = await self._pool.fetch(
             """
-            SELECT u.user_id, u.phone, u.first_name, u.last_name, u.username,
-                   coalesce(p.bio, '') AS bio
-            FROM users u
-            LEFT JOIN user_profiles p USING (user_id)
-            WHERE u.username IS NOT NULL
-              AND u.username LIKE $1 || '%'
-              AND u.user_id != $2
-            ORDER BY u.username
+            SELECT user_id, phone, first_name, last_name, username, bio
+            FROM users
+            WHERE username IS NOT NULL
+              AND username LIKE $1 || '%'
+              AND user_id != $2
+            ORDER BY username
             LIMIT $3
             """,
             prefix,
@@ -144,12 +140,11 @@ class AccountDAO:
         )
 
     async def get_profile(self, user_id: int) -> UserRow | None:
-        """Fetch user row joined with bio from user_profiles."""
+        """Fetch user row including bio."""
         row = await self._pool.fetchrow(
-            """SELECT u.user_id, u.phone, u.first_name, u.last_name,
-                      coalesce(p.bio, '') AS bio, u.username
-               FROM users u LEFT JOIN user_profiles p ON u.user_id = p.user_id
-               WHERE u.user_id = $1""",
+            """SELECT user_id, phone, first_name, last_name, username, bio
+               FROM users
+               WHERE user_id = $1""",
             user_id,
         )
         if row is None:
@@ -166,14 +161,15 @@ class AccountDAO:
     async def upsert_profile(
         self, user_id: int, first_name: str, last_name: str, bio: str,
     ) -> None:
+        """Update the merged profile fields (first/last name + bio) in one shot."""
         await self._pool.execute(
-            "UPDATE users SET first_name = $2, last_name = $3 WHERE user_id = $1",
-            user_id, first_name, last_name,
-        )
-        await self._pool.execute(
-            """INSERT INTO user_profiles (user_id, bio, updated_at) VALUES ($1, $2, now())
-               ON CONFLICT (user_id) DO UPDATE SET bio = $2, updated_at = now()""",
-            user_id, bio,
+            """UPDATE users
+                  SET first_name = $2,
+                      last_name  = $3,
+                      bio        = $4,
+                      updated_at = now()
+                WHERE user_id = $1""",
+            user_id, first_name, last_name, bio,
         )
 
     async def save_phone_code(

@@ -31,10 +31,13 @@ class PtsCursor:
             logger.debug("pts_cursor.get failed: auth_key_id=%d error=%s", auth_key_id, exc)
             return None
 
-    async def set(self, auth_key_id: int, pts: int) -> None:
-        """Update cursor to max(existing, pts) and refresh TTL."""
+    async def set(self, auth_key_id: int, pts: int, *, force: bool = False) -> None:
+        """Update cursor and refresh TTL."""
         try:
             key = self._key(auth_key_id)
+            if force:
+                await self._redis.set(key, str(pts), ex=self.TTL_SEC)
+                return
             existing_raw = await self._redis.get(key)
             existing = int(existing_raw) if existing_raw is not None else None
             if existing is None or pts > existing:

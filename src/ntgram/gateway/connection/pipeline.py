@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+SAFE_REPLAY_WINDOW = 100
+
 
 _NON_CONTENT_CONSTRUCTORS: frozenset[str] = frozenset({
     "msgs_ack",
@@ -381,6 +383,7 @@ class ConnectionPipeline:
                 self._store.put(service_request, response)
             outcomes.append(_DispatchOutcome(service_request, response))
             self._maybe_bind_user(ctx, service_request, response)
+            self._maybe_clear_push_state(ctx, service_request, response)
         return outcomes
 
     async def _dispatch_one(self, request: TlRequest) -> TlResponse:
@@ -432,14 +435,47 @@ class ConnectionPipeline:
             return
         self._sessions.bind_user(request.auth_key_id, user_id)
         ctx.current_user_id = user_id
+        
         asyncio.ensure_future(
             self._ensure_push_slot(
                 ctx,
                 auth_key_id=request.auth_key_id,
                 session_id=request.session_id,
                 user_id=user_id,
+                fresh_login=True,
             )
         )
+
+    def _maybe_clear_push_state(
+        self,
+        ctx: ConnectionContext,
+        request: TlRequest,
+        response: TlResponse,
+    ) -> None:
+        """Drop pts_cursor and push slot after a successful auth.logOut."""
+        if request.constructor != "auth.logOut":
+            return
+        if request.auth_key_id == 0:
+            return
+        nested = (
+            response.result.get("result", {})
+            if isinstance(response.result, dict) else {}
+        )
+        if nested.get("constructor") != "auth.loggedOut":
+            return
+
+        if self._pts_cursor is not None:
+            asyncio.ensure_future(
+                self._pts_cursor.delete(request.auth_key_id)
+            )
+
+        slot = ctx.push_slot
+        if slot is not None:
+            self._push_registry.unregister(slot)
+            task = slot.task
+            if task is not None and not task.done():
+                task.cancel()
+            ctx.push_slot = None
 
     async def _ensure_push_slot(
         self,
@@ -448,10 +484,19 @@ class ConnectionPipeline:
         auth_key_id: int,
         session_id: int,
         user_id: int,
+        fresh_login: bool = False,
     ) -> None:
-        """Create and register a push slot (idempotent) then start subscriber task."""
-        if ctx.push_slot is not None:
-            return
+        """Create and register a push slot then start subscriber task."""
+        existing = ctx.push_slot
+        if existing is not None:
+            if existing.user_id == user_id and not fresh_login:
+                return
+            # Account switch
+            self._push_registry.unregister(existing)
+            task = existing.task
+            if task is not None and not task.done():
+                task.cancel()
+            ctx.push_slot = None
 
         sess = self._sessions.get_session(auth_key_id)
         slot = PushSlot(
@@ -468,21 +513,11 @@ class ConnectionPipeline:
             and self._account_client is not None
             and self._chat_client is not None
         ):
-            since_pts = 0
-            try:
-                if self._pts_cursor is not None:
-                    cursor_pts = await self._pts_cursor.get(auth_key_id)
-                    if cursor_pts is not None:
-                        since_pts = cursor_pts
-                        logger.debug(
-                            "push subscriber starting from cursor pts=%d auth_key_id=%d",
-                            since_pts, auth_key_id,
-                        )
-                if since_pts == 0:
-                    state = await self._updates_client.get_state(user_id)
-                    since_pts = state.pts
-            except Exception:
-                pass
+            since_pts = await self._resolve_since_pts(
+                auth_key_id=auth_key_id,
+                user_id=user_id,
+                fresh_login=fresh_login,
+            )
 
             from ntgram.gateway.push.subscriber import run_subscriber
             slot.task = asyncio.create_task(
@@ -495,6 +530,63 @@ class ConnectionPipeline:
                 ),
                 name=f"push-subscriber-user-{user_id}",
             )
+
+    async def _resolve_since_pts(
+        self,
+        *,
+        auth_key_id: int,
+        user_id: int,
+        fresh_login: bool,
+    ) -> int:
+        """Pick the right starting pts for the push subscriber."""
+        assert self._updates_client is not None  # callers gate on this
+
+        if fresh_login:
+            try:
+                state = await self._updates_client.get_state(user_id)
+                since_pts = int(state.pts)
+                if self._pts_cursor is not None:
+                    #account switch on the same auth_key_id
+                    await self._pts_cursor.set(
+                        auth_key_id, since_pts, force=True,
+                    )
+                logger.debug(
+                    "fresh login: pinned pts_cursor=%d auth_key_id=%d",
+                    since_pts, auth_key_id,
+                )
+                return since_pts
+            except Exception as exc:
+                logger.debug(
+                    "fresh login since_pts resolution failed: %s", exc,
+                )
+                return 0
+
+        if self._pts_cursor is not None:
+            try:
+                cursor_pts = await self._pts_cursor.get(auth_key_id)
+            except Exception as exc:
+                logger.debug("pts_cursor.get failed: %s", exc)
+                cursor_pts = None
+            if cursor_pts is not None:
+                logger.debug(
+                    "push subscriber starting from cursor pts=%d auth_key_id=%d",
+                    cursor_pts, auth_key_id,
+                )
+                return cursor_pts
+
+        try:
+            state = await self._updates_client.get_state(user_id)
+            since_pts = max(0, int(state.pts) - SAFE_REPLAY_WINDOW)
+            if self._pts_cursor is not None:
+                await self._pts_cursor.set(auth_key_id, since_pts)
+            logger.debug(
+                "legacy session: safety-net pts_cursor=%d (state.pts=%d) auth_key_id=%d",
+                since_pts, state.pts, auth_key_id,
+            )
+            return since_pts
+        except Exception as exc:
+            logger.debug("safety-net since_pts resolution failed: %s", exc)
+            return 0
 
     @staticmethod
     def _log_inbound(

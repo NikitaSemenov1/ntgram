@@ -671,7 +671,28 @@ async def handle_messages_get_all_drafts(
     )
 
 
-# help.* (static)
+async def handle_messages_get_message_edit_data(
+    ctx: RouterContext, request: TlRequest,
+) -> TlResponse:
+    """Stub: always report non-caption editable message.
+    """
+    return wrap_rpc_result(
+        request.req_msg_id,
+        {"constructor": "messages.messageEditData"},
+    )
+
+
+async def handle_messages_read_reactions(
+    ctx: RouterContext, request: TlRequest,
+) -> TlResponse:
+    """Stub: reactions are not implemented; report no PTS change."""
+    return wrap_rpc_result(
+        request.req_msg_id,
+        {"constructor": "messages.affectedHistory", "pts": 0, "pts_count": 0, "offset": 0},
+    )
+
+
+# help.*
 
 
 async def handle_help_get_terms_of_service_update(
@@ -841,6 +862,13 @@ async def handle_stories_get_all_read_peer_stories(
     )
 
 
+async def handle_stories_can_send_story(
+    ctx: RouterContext, request: TlRequest,
+) -> TlResponse:
+    """Stub: stories are not implemented; sending is always disallowed."""
+    return wrap_rpc_result(request.req_msg_id, {"constructor": "boolFalse"})
+
+
 # payments.*
 
 
@@ -977,6 +1005,8 @@ STATIC_STUBS: dict[str, RpcHandler] = {
     "messages.getPinnedDialogs": handle_messages_get_pinned_dialogs,
     "messages.setTyping": handle_messages_set_typing,
     "messages.getAllDrafts": handle_messages_get_all_drafts,
+    "messages.getMessageEditData": handle_messages_get_message_edit_data,
+    "messages.readReactions": handle_messages_read_reactions,
     # help.* (static)
     "help.getTermsOfServiceUpdate": handle_help_get_terms_of_service_update,
     "help.getInviteText": handle_help_get_invite_text,
@@ -992,6 +1022,7 @@ STATIC_STUBS: dict[str, RpcHandler] = {
     "stories.getPinnedStories": handle_stories_get_pinned_stories,
     "stories.getAlbums": handle_stories_get_albums,
     "stories.getAllReadPeerStories": handle_stories_get_all_read_peer_stories,
+    "stories.canSendStory": handle_stories_can_send_story,
     # payments.*
     "payments.getStarGifts": handle_payments_get_star_gifts,
     "payments.getSavedStarGifts": handle_payments_get_saved_star_gifts,

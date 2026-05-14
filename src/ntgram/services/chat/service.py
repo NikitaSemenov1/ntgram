@@ -19,9 +19,11 @@ from ntgram.gen import (
 from ntgram.services.chat.dao import (
     ChatDAO,
     ChatRow,
+    DialogStateOwnerRow,
     InsertMessageBoxRow,
-    MemberAddEntry,
+    InsertMessageRow,
     MessageBoxRow,
+    ThreadParticipantAddEntry,
 )
 from ntgram.services.common import err_meta, ok_meta
 from ntgram.tl.builders.chat_actions import (
@@ -45,8 +47,23 @@ MAX_GROUP_MEMBERS = 200
 MAX_TITLE_LENGTH = 128
 MAX_HISTORY_LIMIT = 50
 
+# Kept for external interface compatibility (gRPC peer typing).
 PEER_TYPE_USER = 0
 PEER_TYPE_CHAT = 1
+
+
+def _is_group_state(row: DialogStateOwnerRow) -> bool:
+    return row.peer_chat_id > 0
+
+
+def _participant_dict(row: DialogStateOwnerRow, thread_id: int) -> dict:
+    """Translate a DialogStateOwnerRow to the legacy participant dict."""
+    return {
+        "user_id": int(row.owner_user_id),
+        "dialog_id": int(thread_id),
+        "peer_id": int(row.peer_id),
+        "is_group": bool(row.is_group),
+    }
 
 
 class ChatService(chat_pb2_grpc.ChatServiceServicer):
@@ -171,19 +188,12 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
     # Peer / participant resolution (private)
     
     async def _resolve_participants(
-        self, dialog_id: int, actor_user_id: int,
+        self, thread_id: int, actor_user_id: int,
     ) -> list[dict]:
-        """[{user_id, dialog_id, peer_id, is_group}] for one dialog."""
-        owners = await self._dao.get_dialog_owners(dialog_id)
-        return [
-            {
-                "user_id": int(o["owner_user_id"]),
-                "dialog_id": dialog_id,
-                "peer_id": int(o["peer_id"]),
-                "is_group": bool(o["is_group"]),
-            }
-            for o in owners
-        ]
+        """[{user_id, dialog_id, peer_id, is_group}] for one thread."""
+        del actor_user_id  # actor is implicit in dialog_state rows
+        owners = await self._dao.find_dialog_states_by_thread_id(thread_id)
+        return [_participant_dict(o, thread_id) for o in owners]
 
     @staticmethod
     def _peer_type_for(is_group: bool) -> int:
@@ -202,10 +212,10 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             is_group=bool(participant["is_group"]),
         )
 
-    async def _resolve_dialog_from_peer(
+    async def _resolve_thread_from_peer(
         self, peer: common_pb2.InputPeer,
     ) -> int:
-        """Resolve InputPeer to dialog_id internally."""
+        """Resolve InputPeer to thread_id internally."""
         actor = int(peer.actor_user_id)
         which = peer.WhichOneof("peer")
         if which == "user_id":
@@ -227,10 +237,8 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             return 0
         if which == "chat_id":
             chat_id = int(peer.chat_id)
-            dialog_id = await self._dao.find_dialog_by_peer(
-                actor, is_group=True, peer_id=chat_id,
-            )
-            return int(dialog_id) if dialog_id else 0
+            thread_id = await self._dao.find_thread_for_chat(chat_id)
+            return int(thread_id) if thread_id else 0
         return 0
 
     async def _embed_chat(
@@ -244,20 +252,29 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             return []
         return [self._chat_to_minimal(chat)]
 
-    # Service-message fan-out (group chat lifecycle helper)
-
-    async def _build_chat_service_message(
+    # Chat lifecycle event emitter (replaces _build_chat_service_message)
+    
+    async def _emit_chat_lifecycle_event(
         self,
         *,
         actor_user_id: int,
         chat_id: int,
         member_ids: list[int],
+        kind: str,
         action_tl: dict,
         date_unix: int,
     ) -> tuple[common_pb2.UpdateEnvelope, int]:
-        """Persist one messageService per participant + emit per-user updates."""
+        """Persist a chat_events row + fan out messageService updates."""
         peer_tl = peer_chat(chat_id)
-        dialog_message_id = await self._dao.next_dialog_message_id()
+
+        event_id = await self._dao.add_chat_event(
+            chat_id=chat_id,
+            actor_user_id=actor_user_id,
+            kind=kind,
+            payload=action_tl,
+            date_unix=date_unix,
+        )
+        del event_id  # currently audit-only; surfaced via service_message_id
 
         ubid_by_uid: dict[int, int] = {}
         for uid in member_ids:
@@ -265,7 +282,6 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
 
         pts_by_uid = await self._alloc_pts_for_users(member_ids)
 
-        rows: list[InsertMessageBoxRow] = []
         pts_updates: list[tuple[int, int, str, dict, int]] = []
         actor_ubid = 0
         actor_pts = 0
@@ -273,22 +289,6 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             ubid = ubid_by_uid[uid]
             pts = pts_by_uid[uid]
             out = (uid == actor_user_id)
-            rows.append(
-                InsertMessageBoxRow(
-                    user_id=uid,
-                    user_message_box_id=ubid,
-                    dialog_message_id=dialog_message_id,
-                    dialog_id=0,  # group service messages aren't tied to a dialog row
-                    peer_type=PEER_TYPE_CHAT,
-                    peer_id=chat_id,
-                    from_user_id=actor_user_id,
-                    out=out,
-                    random_id=None,
-                    text="",
-                    date_unix=date_unix,
-                    pts=pts,
-                ),
-            )
             msg_tl = build_message_service_tl(
                 message_id=ubid,
                 from_user_id=actor_user_id,
@@ -305,7 +305,6 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
                 actor_ubid = ubid
                 actor_pts = pts
 
-        await self._dao.insert_message_box_batch(None, rows)
         await self._record_pts_updates(pts_updates, date_unix=date_unix)
 
         actor_msg_tl = build_message_service_tl(
@@ -378,14 +377,9 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         random_id: int,
     ) -> chat_pb2.SendMessageResponse:
         """Idempotent reply when a row with the same random_id exists."""
-        owners = await self._dao.get_dialog_owners(existing.dialog_id)
+        owners = await self._dao.find_dialog_states_by_thread_id(existing.thread_id)
         peer_map: dict[int, dict] = {
-            int(o["owner_user_id"]): {
-                "user_id": int(o["owner_user_id"]),
-                "dialog_id": existing.dialog_id,
-                "peer_id": int(o["peer_id"]),
-                "is_group": bool(o["is_group"]),
-            }
+            int(o.owner_user_id): _participant_dict(o, existing.thread_id)
             for o in owners
         }
         copies = await self._dao.get_boxes_by_dialog_message_ids(
@@ -398,9 +392,9 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
                 uid,
                 {
                     "user_id": uid,
-                    "dialog_id": int(existing.dialog_id),
+                    "dialog_id": int(existing.thread_id),
                     "peer_id": int(existing.peer_id),
-                    "is_group": existing.peer_type == PEER_TYPE_CHAT,
+                    "is_group": existing.is_group,
                 },
             )
             deliveries.append(
@@ -421,7 +415,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             else:
                 peer_user_id = int(actor_peer["peer_id"])
         else:
-            if existing.peer_type == PEER_TYPE_CHAT:
+            if existing.is_group:
                 peer_chat_id = int(existing.peer_id)
             else:
                 peer_user_id = int(existing.peer_id)
@@ -463,20 +457,39 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         if not await self._user_exists(request.peer_user_id):
             return chat_pb2.CreatePrivateDialogResponse(meta=err_meta(400, "PEER_NOT_FOUND"))
 
-        existing = await self._dao.find_private_dialog(
+        existing = await self._dao.find_private_thread(
             request.actor_user_id, request.peer_user_id,
         )
         if existing is not None:
             return chat_pb2.CreatePrivateDialogResponse(meta=ok_meta(), dialog_id=existing)
 
-        dialog_id = await self._dao.next_dialog_id()
-        await self._dao.create_dialog(
-            dialog_id, request.actor_user_id, request.peer_user_id, False,
+        thread_id = await self._dao.next_thread_id()
+        await self._dao.create_thread(thread_id, chat_id=None)
+        date_unix = int(time.time())
+        await self._dao.bulk_add_thread_participants(
+            thread_id,
+            [
+                ThreadParticipantAddEntry(
+                    user_id=int(request.actor_user_id),
+                    inviter_user_id=0,
+                    joined_at_unix=date_unix,
+                ),
+                ThreadParticipantAddEntry(
+                    user_id=int(request.peer_user_id),
+                    inviter_user_id=0,
+                    joined_at_unix=date_unix,
+                ),
+            ],
         )
-        await self._dao.create_dialog(
-            dialog_id, request.peer_user_id, request.actor_user_id, False,
+        await self._dao.create_dialog_state(
+            thread_id, int(request.actor_user_id),
+            peer_user_id=int(request.peer_user_id),
         )
-        return chat_pb2.CreatePrivateDialogResponse(meta=ok_meta(), dialog_id=dialog_id)
+        await self._dao.create_dialog_state(
+            thread_id, int(request.peer_user_id),
+            peer_user_id=int(request.actor_user_id),
+        )
+        return chat_pb2.CreatePrivateDialogResponse(meta=ok_meta(), dialog_id=thread_id)
 
     async def CreateGroupChat(self, request, context):  # noqa: N802
         title = (request.title or "").strip()
@@ -512,23 +525,30 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         chat_id = await self._dao.next_chat_id()
         await self._dao.create_chat(chat_id, title, actor, date_unix)
 
-        await self._dao.bulk_add_members(
-            chat_id,
+        thread_id = await self._dao.next_thread_id()
+        await self._dao.create_thread(thread_id, chat_id=chat_id)
+        await self._dao.bulk_add_thread_participants(
+            thread_id,
             [
-                MemberAddEntry(uid, inviter_user_id=actor, joined_at_unix=date_unix)
+                ThreadParticipantAddEntry(
+                    user_id=uid, inviter_user_id=actor,
+                    joined_at_unix=date_unix,
+                )
                 for uid in all_members
             ],
+            chat_id_for_counter=chat_id,
         )
-
-        dialog_id = await self._dao.next_dialog_id()
         for uid in all_members:
-            await self._dao.create_dialog(dialog_id, uid, chat_id, True)
+            await self._dao.create_dialog_state(
+                thread_id, uid, peer_chat_id=chat_id,
+            )
 
         action_tl = build_action_chat_create(title=title, user_ids=all_members)
-        envelope, actor_msg_id = await self._build_chat_service_message(
+        envelope, actor_msg_id = await self._emit_chat_lifecycle_event(
             actor_user_id=actor,
             chat_id=chat_id,
             member_ids=all_members,
+            kind="chat_create",
             action_tl=action_tl,
             date_unix=date_unix,
         )
@@ -542,7 +562,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         return chat_pb2.CreateGroupChatResponse(
             meta=ok_meta(),
             chat_id=chat_id,
-            dialog_id=dialog_id,
+            dialog_id=thread_id,
             date_unix=date_unix,
             service_message_id=actor_msg_id,
             updates=envelope,
@@ -561,7 +581,11 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         if not await self._user_exists(new_user):
             return chat_pb2.AddChatUserResponse(meta=err_meta(400, "USER_NOT_FOUND"))
 
-        members = await self._dao.get_member_ids(chat_id)
+        thread_id = await self._dao.find_thread_for_chat(chat_id)
+        if thread_id is None:
+            return chat_pb2.AddChatUserResponse(meta=err_meta(500, "CHAT_THREAD_MISSING"))
+
+        members = await self._dao.get_thread_participant_ids(thread_id)
         if actor not in members:
             return chat_pb2.AddChatUserResponse(meta=err_meta(403, "USER_NOT_PARTICIPANT"))
         if new_user in members:
@@ -570,16 +594,21 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             return chat_pb2.AddChatUserResponse(meta=err_meta(400, "USERS_TOO_MANY"))
 
         date_unix = int(time.time())
-        await self._dao.add_member(chat_id, new_user, actor, date_unix)
-        dialog_id = await self._dao.next_dialog_id()
-        await self._dao.create_dialog(dialog_id, new_user, chat_id, True)
+        await self._dao.add_thread_participant(
+            thread_id, new_user, actor, date_unix,
+            chat_id_for_counter=chat_id,
+        )
+        await self._dao.create_dialog_state(
+            thread_id, new_user, peer_chat_id=chat_id,
+        )
 
         all_members = [*members, new_user]
         action_tl = build_action_chat_add_user(user_ids=[new_user])
-        envelope, _ = await self._build_chat_service_message(
+        envelope, _ = await self._emit_chat_lifecycle_event(
             actor_user_id=actor,
             chat_id=chat_id,
             member_ids=all_members,
+            kind="chat_add_user",
             action_tl=action_tl,
             date_unix=date_unix,
         )
@@ -608,7 +637,11 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         if chat is None:
             return chat_pb2.EditChatTitleResponse(meta=err_meta(404, "CHAT_NOT_FOUND"))
 
-        members = await self._dao.get_member_ids(chat_id)
+        thread_id = await self._dao.find_thread_for_chat(chat_id)
+        if thread_id is None:
+            return chat_pb2.EditChatTitleResponse(meta=err_meta(500, "CHAT_THREAD_MISSING"))
+
+        members = await self._dao.get_thread_participant_ids(thread_id)
         if actor not in members:
             return chat_pb2.EditChatTitleResponse(meta=err_meta(403, "USER_NOT_PARTICIPANT"))
 
@@ -616,10 +649,11 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
 
         date_unix = int(time.time())
         action_tl = build_action_chat_edit_title(title=new_title)
-        envelope, _ = await self._build_chat_service_message(
+        envelope, _ = await self._emit_chat_lifecycle_event(
             actor_user_id=actor,
             chat_id=chat_id,
             member_ids=members,
+            kind="chat_edit_title",
             action_tl=action_tl,
             date_unix=date_unix,
         )
@@ -639,7 +673,12 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         if chat is None:
             return chat_pb2.GetFullChatResponse(meta=err_meta(404, "CHAT_NOT_FOUND"))
 
-        members = await self._dao.get_members(request.chat_id)
+        thread_id = await self._dao.find_thread_for_chat(int(request.chat_id))
+        members = (
+            await self._dao.get_thread_participants(thread_id)
+            if thread_id is not None
+            else []
+        )
         member_ids = [m.user_id for m in members]
         users = await self._get_profiles_batch(int(chat.created_by), set(member_ids))
 
@@ -688,7 +727,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         )
         dialogs = [
             chat_pb2.Dialog(
-                dialog_id=r.dialog_id,
+                dialog_id=r.thread_id,
                 peer_id=r.peer_id,
                 is_group=r.is_group,
                 read_inbox_max_id=r.read_inbox_max_id,
@@ -707,10 +746,10 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         user_ids: set[int] = set()
         chat_ids: set[int] = set()
         for r in rows:
-            if not r.is_group:
-                user_ids.add(int(r.peer_id))
-            else:
-                chat_ids.add(int(r.peer_id))
+            if r.peer_chat_id:
+                chat_ids.add(int(r.peer_chat_id))
+            elif r.peer_user_id:
+                user_ids.add(int(r.peer_user_id))
             if r.top_from_user_id:
                 user_ids.add(int(r.top_from_user_id))
         user_ids.discard(0)
@@ -734,7 +773,9 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         )
 
     async def FindDialogsByDialogId(self, request, context):  # noqa: N802
-        owners = await self._dao.find_dialogs_by_dialog_id(int(request.dialog_id))
+        owners = await self._dao.find_dialog_states_by_thread_id(
+            int(request.dialog_id),
+        )
         return chat_pb2.FindDialogsByDialogIdResponse(
             meta=ok_meta(),
             owners=[
@@ -756,11 +797,11 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
 
         actor = int(request.actor_user_id)
         if request.HasField("peer"):
-            dialog_id = await self._resolve_dialog_from_peer(request.peer)
-            if dialog_id <= 0:
+            thread_id = await self._resolve_thread_from_peer(request.peer)
+            if thread_id <= 0:
                 return chat_pb2.SendMessageResponse(meta=err_meta(400, "PEER_ID_INVALID"))
         else:
-            dialog_id = int(request.dialog_id)
+            thread_id = int(request.dialog_id)
         random_id = int(request.random_id) if request.random_id else 0
 
         if random_id:
@@ -770,13 +811,13 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
                     actor, cached, random_id,
                 )
 
-        participants = await self._resolve_participants(dialog_id, actor)
+        participants = await self._resolve_participants(thread_id, actor)
         if not participants:
             return chat_pb2.SendMessageResponse(meta=err_meta(400, "PEER_ID_INVALID"))
         if not any(p["user_id"] == actor for p in participants):
             return chat_pb2.SendMessageResponse(meta=err_meta(403, "CHAT_WRITE_FORBIDDEN"))
 
-        # Group membership check (defensive: catches stale dialogs).
+        # Group membership check (defensive: catches stale dialog_state).
         is_group_send = any(p["is_group"] for p in participants)
         if is_group_send:
             chat_id = next(
@@ -785,7 +826,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
                 0,
             )
             if chat_id:
-                members = await self._dao.get_member_ids(chat_id)
+                members = await self._dao.get_thread_participant_ids(thread_id)
                 if actor not in members:
                     return chat_pb2.SendMessageResponse(
                         meta=err_meta(403, "CHAT_WRITE_FORBIDDEN"),
@@ -802,7 +843,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         member_ids = [int(p["user_id"]) for p in participants]
         pts_by_uid = await self._alloc_pts_for_users(member_ids)
 
-        rows: list[InsertMessageBoxRow] = []
+        boxes: list[InsertMessageBoxRow] = []
         deliveries: list[chat_pb2.ParticipantDelivery] = []
         pts_updates: list[tuple[int, int, str, dict, int]] = []
         actor_ubid = 0
@@ -811,33 +852,22 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         for p in participants:
             uid = int(p["user_id"])
             is_group = bool(p["is_group"])
-            peer_type = self._peer_type_for(is_group)
             ubid = ubid_by_uid[uid]
             pts = pts_by_uid[uid]
             out = (uid == actor)
-            rows.append(
+            boxes.append(
                 InsertMessageBoxRow(
                     user_id=uid,
                     user_message_box_id=ubid,
                     dialog_message_id=dialog_message_id,
-                    dialog_id=int(p["dialog_id"]),
-                    peer_type=peer_type,
-                    peer_id=int(p["peer_id"]),
-                    from_user_id=actor,
                     out=out,
                     random_id=random_id if (out and random_id) else None,
-                    text=text,
-                    date_unix=date_unix,
                     pts=pts,
                 ),
             )
 
             await self._dao.update_dialog_top(
-                uid,
-                int(p["dialog_id"]),
-                ubid,
-                date_unix,
-                increment_unread=(not out),
+                uid, thread_id, ubid, increment_unread=(not out),
             )
 
             peer_id_tl = (
@@ -864,8 +894,15 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
                 actor_ubid = ubid
                 actor_pts = pts
 
-        # chat_db: insert message_boxes (one transaction).
-        await self._dao.insert_message_box_batch(None, rows)
+        # chat_db: insert messages + message_boxes (one transaction).
+        message_row = InsertMessageRow(
+            dialog_message_id=dialog_message_id,
+            thread_id=thread_id,
+            from_user_id=actor,
+            text=text,
+            date_unix=date_unix,
+        )
+        await self._dao.insert_message_with_boxes(None, message_row, boxes)
 
         # updates_db: persist PTS log + NOTIFY (one transaction inside the RPC).
         await self._record_pts_updates(pts_updates, date_unix=date_unix)
@@ -934,7 +971,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         new_entities_json = (
             request.new_entities_json if request.new_entities_json else None
         )
-        await self._dao.update_text_by_dialog_message_id(
+        await self._dao.update_message_content(
             dialog_message_id,
             new_text,
             new_entities_json,
@@ -964,10 +1001,10 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         for copy in all_copies:
             uid = int(copy.user_id)
             pts = pts_by_uid[uid]
-            is_group = (copy.peer_type == PEER_TYPE_CHAT)
+            is_group = copy.is_group
             peer_id_tl = (
-                peer_chat(int(copy.peer_id)) if is_group
-                else peer_user(int(copy.peer_id))
+                peer_chat(int(copy.peer_chat_id)) if is_group
+                else peer_user(int(copy.peer_user_id))
             )
             msg_tl = build_message_tl(
                 message_id=int(copy.user_message_box_id),
@@ -1005,10 +1042,10 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             (c for c in all_copies if int(c.user_id) == actor), None,
         )
         if actor_copy is not None:
-            if actor_copy.peer_type == PEER_TYPE_CHAT:
-                peer_chat_id = int(actor_copy.peer_id)
+            if actor_copy.is_group:
+                peer_chat_id = int(actor_copy.peer_chat_id)
             else:
-                pid = int(actor_copy.peer_id)
+                pid = int(actor_copy.peer_user_id)
                 if pid != actor:
                     peer_user_id = pid
 
@@ -1151,11 +1188,11 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         actor = int(request.actor_user_id)
 
         if request.HasField("peer"):
-            dialog_id = await self._resolve_dialog_from_peer(request.peer)
+            thread_id = await self._resolve_thread_from_peer(request.peer)
         else:
-            dialog_id = int(request.dialog_id)
+            thread_id = int(request.dialog_id)
 
-        if dialog_id <= 0 or actor <= 0:
+        if thread_id <= 0 or actor <= 0:
             return chat_pb2.ListMessagesResponse(
                 meta=ok_meta(), messages=[], total_count=0,
             )
@@ -1171,11 +1208,11 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         add_offset = int(request.add_offset) if request.add_offset else 0
 
         total = await self._dao.count_history(
-            actor, dialog_id,
+            actor, thread_id,
             offset_id=offset_id, min_id=min_id, max_id=max_id,
         )
         rows = await self._dao.get_history(
-            actor, dialog_id, limit,
+            actor, thread_id, limit,
             offset_id=offset_id, min_id=min_id, max_id=max_id,
             add_offset=add_offset,
         )
@@ -1197,9 +1234,9 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         users = await self._get_profiles_batch(actor, sender_ids)
 
         chats: list[common_pb2.MinimalChat] = []
-        actor_dialog = await self._dao.get_dialog_for_owner(actor, dialog_id)
-        if actor_dialog is not None and bool(actor_dialog["is_group"]):
-            chats = await self._embed_chat(int(actor_dialog["peer_id"]))
+        actor_state = await self._dao.get_dialog_state(actor, thread_id)
+        if actor_state is not None and actor_state.is_group:
+            chats = await self._embed_chat(int(actor_state.peer_chat_id))
 
         return chat_pb2.ListMessagesResponse(
             meta=ok_meta(),
@@ -1213,20 +1250,20 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         actor = int(request.actor_user_id)
 
         if request.HasField("peer"):
-            dialog_id = await self._resolve_dialog_from_peer(request.peer)
+            thread_id = await self._resolve_thread_from_peer(request.peer)
         else:
-            dialog_id = int(request.dialog_id)
+            thread_id = int(request.dialog_id)
 
-        if actor <= 0 or dialog_id <= 0:
+        if actor <= 0 or thread_id <= 0:
             return chat_pb2.ReadHistoryResponse(meta=err_meta(400, "PEER_ID_INVALID"))
 
-        dialog_row = await self._dao.get_dialog_for_owner(actor, dialog_id)
-        if dialog_row is None:
+        actor_state = await self._dao.get_dialog_state(actor, thread_id)
+        if actor_state is None:
             return chat_pb2.ReadHistoryResponse(meta=err_meta(400, "PEER_ID_INVALID"))
 
-        is_group = bool(dialog_row["is_group"])
-        actor_peer_id = int(dialog_row["peer_id"])
-        read_inbox_max_id = int(dialog_row["read_inbox_max_id"])
+        is_group = actor_state.is_group
+        actor_peer_id = int(actor_state.peer_id)
+        read_inbox_max_id = int(actor_state.read_inbox_max_id)
 
         update_peer = peer_chat(actor_peer_id) if is_group else peer_user(actor_peer_id)
 
@@ -1234,7 +1271,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         effective_max_id = (
             requested_max_id
             if requested_max_id > 0
-            else int(dialog_row["top_user_message_box_id"])
+            else int(actor_state.top_user_message_box_id)
         )
 
         if effective_max_id <= 0 or read_inbox_max_id >= effective_max_id:
@@ -1244,7 +1281,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             )
 
         target_ubid = await self._dao.max_inbox_ubid_in_range(
-            actor, dialog_id, effective_max_id,
+            actor, thread_id, effective_max_id,
         )
         if target_ubid <= 0:
             current_pts = await self._current_pts(actor)
@@ -1253,12 +1290,12 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             )
 
         receipts = await self._dao.peer_outbox_for_inbox(
-            actor, dialog_id, target_ubid,
+            actor, thread_id, target_ubid,
         )
 
-        await self._dao.mark_inbox_read(actor, dialog_id, target_ubid)
-        await self._dao.update_read_inbox(actor, dialog_id, target_ubid)
-        await self._dao.reset_unread_count_up_to(actor, dialog_id, target_ubid)
+        await self._dao.mark_inbox_read(actor, thread_id, target_ubid)
+        await self._dao.update_read_inbox(actor, thread_id, target_ubid)
+        await self._dao.reset_unread_count_up_to(actor, thread_id, target_ubid)
 
         # Allocate PTS for actor + every sender in one batch RPC.
         sender_ids = [int(r.sender_user_id) for r in receipts]
@@ -1266,7 +1303,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         pts_by_uid = await self._alloc_pts_for_users(all_uids)
         actor_pts = pts_by_uid[actor]
 
-        still_unread = await self._dao.unread_count_for_owner(actor, dialog_id)
+        still_unread = await self._dao.unread_count_for_owner(actor, thread_id)
 
         items: list[tuple[int, int, str, dict, int]] = [
             (
@@ -1284,7 +1321,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
         receipts_pb: list[chat_pb2.ReadOutboxReceipt] = []
         for rcp in receipts:
             await self._dao.update_read_outbox(
-                rcp.sender_user_id, rcp.sender_dialog_id, rcp.max_outbox_id,
+                rcp.sender_user_id, rcp.sender_thread_id, rcp.max_outbox_id,
             )
             sender_pts = pts_by_uid[int(rcp.sender_user_id)]
             sender_peer = (
@@ -1304,7 +1341,7 @@ class ChatService(chat_pb2_grpc.ChatServiceServicer):
             receipts_pb.append(
                 chat_pb2.ReadOutboxReceipt(
                     sender_user_id=rcp.sender_user_id,
-                    sender_dialog_id=rcp.sender_dialog_id,
+                    sender_dialog_id=rcp.sender_thread_id,
                     max_outbox_id=rcp.max_outbox_id,
                     pts=sender_pts,
                 ),

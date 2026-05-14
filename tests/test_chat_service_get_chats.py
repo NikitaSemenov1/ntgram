@@ -8,7 +8,7 @@ pytest.importorskip("grpc")
 from ntgram.gen import account_pb2, chat_pb2
 
 from tests._chat_service_factory import make_chat_service
-from tests._fake_chat_pool import FakeChatPool, _ChatMemberRec, _ChatRec
+from tests._fake_chat_pool import FakeChatPool, _ChatRec
 
 
 def _profiles() -> list[account_pb2.Profile]:
@@ -60,10 +60,9 @@ async def test_get_full_chat_returns_participants_with_inviter() -> None:
         _ChatRec(chat_id=11, title="Crew", created_by=1,
                  version=2, participants_count=2, date_unix=999),
     )
-    pool.state.chat_members.extend([
-        _ChatMemberRec(chat_id=11, user_id=1, inviter_user_id=0, joined_at_unix=999),
-        _ChatMemberRec(chat_id=11, user_id=2, inviter_user_id=1, joined_at_unix=1000),
-    ])
+    pool.add_thread(thread_id=2100, chat_id=11)
+    pool.add_thread_participant(2100, 1, inviter_user_id=0, joined_at_unix=999)
+    pool.add_thread_participant(2100, 2, inviter_user_id=1, joined_at_unix=1000)
     svc, _, _ = make_chat_service(pool, profiles=_profiles())
 
     resp = await svc.GetFullChat(
